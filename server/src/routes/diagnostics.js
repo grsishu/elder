@@ -7,8 +7,8 @@ import { config } from '../config.js';
 
 const router = express.Router();
 
-// GET /api/diagnostics/status
-router.get('/status', async (req, res) => {
+// GET /api/diagnostics and /api/diagnostics/status
+router.get(['/status', '/'], async (req, res) => {
   let dbStatus = { connected: false, version: null, error: null };
   try {
     const vRes = await pool.query('SELECT version();');
