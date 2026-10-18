@@ -5,12 +5,30 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import EmergencyBar from './components/EmergencyBar';
 import LostCheckinModal from './components/LostCheckinModal';
+import TalkingAlarm from './components/TalkingAlarm';
+
+// Pages
 import Login from './pages/Login';
 import Onboarding from './pages/Onboarding';
 import Home from './pages/Home';
 import Diagnostics from './pages/Diagnostics';
 import Reports from './pages/Reports';
 import LiveLocation from './pages/LiveLocation';
+import Wizard from './pages/Wizard';
+import Family from './pages/Family';
+import FamilyUpload from './pages/FamilyUpload';
+import GamesHub from './pages/games/GamesHub';
+import NameFaceGame from './pages/games/NameFaceGame';
+import WhoseVoiceGame from './pages/games/WhoseVoiceGame';
+import PictureMatchingGame from './pages/games/PictureMatchingGame';
+import PatternGame from './pages/games/PatternGame';
+import DailyRoutineGame from './pages/games/DailyRoutineGame';
+import VoiceFluencyGame from './pages/games/VoiceFluencyGame';
+import Dashboard from './pages/Dashboard';
+import ReminderHealth from './pages/ReminderHealth';
+import TakeMeHome from './pages/TakeMeHome';
+import SosPage from './pages/SosPage';
+import Rides from './pages/Rides';
 import { cancelSpeech } from './utils/voice';
 
 // Speech cancellation on route navigation
@@ -41,10 +59,11 @@ function RequireAuth({ children }) {
 function MainLayout() {
   const location = useLocation();
   const isLoginPage = location.pathname === '/login';
+  const isPublicUpload = location.pathname.startsWith('/family/upload/');
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Header />
+      {!isPublicUpload && <Header />}
       <main className="flex-1 pb-24">
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -66,12 +85,131 @@ function MainLayout() {
           />
           <Route path="/diagnostics" element={<Diagnostics />} />
 
-          {/* New Part A & Part B Live Caregiver & Safety Routes */}
+          {/* Phase 2: Setup Wizard & Family */}
           <Route
-            path="/reports"
+            path="/wizard"
             element={
               <RequireAuth>
-                <Reports />
+                <Wizard />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/setup"
+            element={
+              <RequireAuth>
+                <Wizard />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/family"
+            element={
+              <RequireAuth>
+                <Family />
+              </RequireAuth>
+            }
+          />
+          <Route path="/family/upload/:token" element={<FamilyUpload />} />
+
+          {/* Phase 3: Cognitive Games & AI Dashboard */}
+          <Route
+            path="/games"
+            element={
+              <RequireAuth>
+                <GamesHub />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/games/name-face"
+            element={
+              <RequireAuth>
+                <NameFaceGame />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/games/whose-voice"
+            element={
+              <RequireAuth>
+                <WhoseVoiceGame />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/games/picture-matching"
+            element={
+              <RequireAuth>
+                <PictureMatchingGame />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/games/pattern"
+            element={
+              <RequireAuth>
+                <PatternGame />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/games/daily-routine"
+            element={
+              <RequireAuth>
+                <DailyRoutineGame />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/games/voice-fluency"
+            element={
+              <RequireAuth>
+                <VoiceFluencyGame />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAuth>
+                <Dashboard />
+              </RequireAuth>
+            }
+          />
+
+          {/* Phase 4: Daily Reminders & Health */}
+          <Route
+            path="/reminders"
+            element={
+              <RequireAuth>
+                <ReminderHealth />
+              </RequireAuth>
+            }
+          />
+
+          {/* Phase 5: Safety: SOS & Take Me Home */}
+          <Route
+            path="/sos"
+            element={
+              <RequireAuth>
+                <SosPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/lost"
+            element={
+              <RequireAuth>
+                <TakeMeHome />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/take-me-home"
+            element={
+              <RequireAuth>
+                <TakeMeHome />
               </RequireAuth>
             }
           />
@@ -92,44 +230,12 @@ function MainLayout() {
             }
           />
 
-          {/* Fallback routes for other phases */}
+          {/* Phase 6: EasyRide */}
           <Route
-            path="/setup"
+            path="/rides"
             element={
               <RequireAuth>
-                <div className="p-8 text-center text-xl font-bold">Setup Wizard (Phase 2)</div>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/games"
-            element={
-              <RequireAuth>
-                <div className="p-8 text-center text-xl font-bold">Cognitive Games (Phase 3)</div>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/reminders"
-            element={
-              <RequireAuth>
-                <div className="p-8 text-center text-xl font-bold">Daily Reminders (Phase 4)</div>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/family"
-            element={
-              <RequireAuth>
-                <div className="p-8 text-center text-xl font-bold">My Family (Phase 2)</div>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/lost"
-            element={
-              <RequireAuth>
-                <div className="p-8 text-center text-xl font-bold">Take Me Home (Phase 5)</div>
+                <Rides />
               </RequireAuth>
             }
           />
@@ -137,28 +243,35 @@ function MainLayout() {
             path="/easyride"
             element={
               <RequireAuth>
-                <div className="p-8 text-center text-xl font-bold">EasyRide (Phase 6)</div>
+                <Rides />
               </RequireAuth>
             }
           />
+
+          {/* Part A Caregiver Reports */}
           <Route
-            path="/sos"
+            path="/reports"
             element={
               <RequireAuth>
-                <div className="p-8 text-center text-xl font-bold">Emergency SOS Timeline (Phase 5)</div>
+                <Reports />
               </RequireAuth>
             }
           />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
-      {/* Elder Full-Screen Lost Check-in Popup */}
-      <LostCheckinModal />
+      {/* Global Interactive Modals: Wandering Check-in & Talking Medication Alarm */}
+      {!isLoginPage && !isPublicUpload && (
+        <>
+          <LostCheckinModal />
+          <TalkingAlarm />
+        </>
+      )}
 
-      <Footer />
-      {/* Pinned SOS bar appears on all screens except /login */}
-      {!isLoginPage && <EmergencyBar />}
+      {!isPublicUpload && <Footer />}
+      {!isLoginPage && !isPublicUpload && <EmergencyBar />}
     </div>
   );
 }

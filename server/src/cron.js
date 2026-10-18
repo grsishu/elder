@@ -159,16 +159,117 @@ export async function checkAutomatedReports() {
 }
 
 /**
+ * Expand and process reminder occurrences (Asia/Kolkata)
+ */
+export async function processRemindersAndSchedules() {
+  const kolkataDateStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
+  const kDate = new Date(kolkataDateStr);
+  const currentHour = kDate.getHours().toString().padStart(2, '0');
+  const currentMin = kDate.getMinutes().toString().padStart(2, '0');
+  const currentTime = `${currentHour}:${currentMin}`;
+  const currentDayOfWeek = kDate.getDay();
+
+  // 1. Expand matching schedules into occurrences for today
+  const schedulesRes = await query(
+    `SELECT * FROM reminder_schedules
+     WHERE is_active = TRUE AND time_of_day = $1`,
+    [currentTime]
+  );
+
+  for (const s of schedulesRes.rows) {
+    const days = typeof s.days_of_week === 'string' ? JSON.parse(s.days_of_week) : s.days_of_week;
+    if (Array.isArray(days) && days.includes(currentDayOfWeek)) {
+      // Create occurrence if not already created today
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const exists = await query(
+        `SELECT id FROM reminder_occurrences
+         WHERE schedule_id = $1 AND due_at >= $2`,
+        [s.id, todayStart]
+      );
+
+      if (exists.rows.length === 0) {
+        await query(
+          `INSERT INTO reminder_occurrences (schedule_id, elder_id, reminder_type, title, due_at, status)
+           VALUES ($1, $2, $3, $4, NOW(), 'scheduled')`,
+          [s.id, s.elder_id, s.reminder_type, s.title]
+        );
+      }
+    }
+  }
+
+  // 2. Claim and fire scheduled occurrences due now
+  const dueOccurrences = await query(
+    `SELECT o.id, o.elder_id, o.title, o.reminder_type, e.name as elder_name
+     FROM reminder_occurrences o
+     JOIN elders e ON e.id = o.elder_id
+     WHERE o.status = 'scheduled' AND o.due_at <= NOW()
+     FOR UPDATE SKIP LOCKED`
+  );
+
+  for (const occ of dueOccurrences.rows) {
+    await query(
+      `UPDATE reminder_occurrences SET status = 'sent', sent_at = NOW() WHERE id = $1`,
+      [occ.id]
+    );
+
+    // Dispatch Web Push notification
+    import('./services/push.js').then(({ sendWebPushNotification }) => {
+      sendWebPushNotification({
+        elderId: occ.elder_id,
+        title: `स्मृति साथी: ${occ.title}`,
+        body: `${occ.elder_name} जी, यह आपके लिए एक ज़रूरी स्मरण है।`,
+        data: { occurrenceId: occ.id, tag: 'reminder-due' },
+        actions: [
+          { action: 'done', title: '✓ पूरा हुआ (Done)' },
+          { action: 'snooze', title: '⏱ 10 मिनट बाद' },
+        ],
+      }).catch(() => {});
+    });
+  }
+
+  // 3. Mark missed occurrences (> 20 min overdue) and escalate to family
+  const missedOccurrences = await query(
+    `UPDATE reminder_occurrences
+     SET status = 'missed'
+     WHERE status IN ('scheduled', 'sent')
+       AND due_at <= NOW() - INTERVAL '20 minutes'
+     RETURNING id, elder_id, title`
+  );
+
+  for (const missed of missedOccurrences.rows) {
+    const caregivers = await query(
+      `SELECT caregiver_id FROM elder_caregivers WHERE elder_id = $1`,
+      [missed.elder_id]
+    );
+    for (const cg of caregivers.rows) {
+      await query(
+        `INSERT INTO caregiver_alerts (elder_id, caregiver_id, alert_type, message)
+         VALUES ($1, $2, 'missed_reminder', $3)`,
+        [missed.elder_id, cg.caregiver_id, `Reminder missed: "${missed.title}" was not taken after 20 minutes.`]
+      );
+    }
+  }
+
+  return {
+    dueProcessed: dueOccurrences.rows.length,
+    missedMarked: missedOccurrences.rows.length,
+  };
+}
+
+/**
  * Main cron tick handler
  */
 export async function executeCronTick() {
   const locResult = await evaluateAllElders();
   const reportResult = await checkAutomatedReports();
+  const reminderResult = await processRemindersAndSchedules();
 
   return {
     timestamp: new Date().toISOString(),
     location: locResult,
     reports: reportResult,
+    reminders: reminderResult,
   };
 }
 

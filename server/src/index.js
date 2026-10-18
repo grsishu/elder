@@ -19,6 +19,12 @@ import healthRoutes from './routes/health.js';
 import geoRoutes from './routes/geo.js';
 import reportRoutes from './routes/reports.js';
 import locationRoutes from './routes/location.js';
+import wizardRoutes from './routes/wizard.js';
+import gameRoutes from './routes/games.js';
+import reminderRoutes from './routes/reminders.js';
+import sosRoutes from './routes/sos.js';
+import navigationRoutes from './routes/navigation.js';
+import rideRoutes from './routes/rides.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,6 +55,12 @@ app.use('/api/elder', elderRoutes);
 app.use('/api/geo', geoRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/location', locationRoutes);
+app.use('/api/wizard', wizardRoutes);
+app.use('/api/games', gameRoutes);
+app.use('/api/reminders', reminderRoutes);
+app.use('/api/sos', sosRoutes);
+app.use('/api/navigation', navigationRoutes);
+app.use('/api/rides', rideRoutes);
 
 // Cron tick endpoint called by external pinger (cron-job.org) or internal worker
 app.get('/api/cron/tick', async (req, res) => {
@@ -129,4 +141,5 @@ if (process.env.NODE_ENV !== 'test') {
   start();
 }
 
+export { app };
 export default app;
