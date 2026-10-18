@@ -185,6 +185,30 @@ export default function Header({ currentScreenText }) {
               </button>
 
               <button
+                id="menu-nav-reports"
+                onClick={() => {
+                  setHelperMenuOpen(false);
+                  navigate('/reports');
+                }}
+                className="w-full btn-elder bg-purple-50 hover:bg-purple-100 text-purple-900 justify-start px-4 gap-3 text-lg"
+              >
+                <Activity className="w-6 h-6 text-purple-600" />
+                <span>Caregiver Reports</span>
+              </button>
+
+              <button
+                id="menu-nav-live"
+                onClick={() => {
+                  setHelperMenuOpen(false);
+                  navigate('/live');
+                }}
+                className="w-full btn-elder bg-emerald-50 hover:bg-emerald-100 text-emerald-900 justify-start px-4 gap-3 text-lg"
+              >
+                <ShieldAlert className="w-6 h-6 text-emerald-600" />
+                <span>Live Location Tracking</span>
+              </button>
+
+              <button
                 id="menu-nav-diagnostics"
                 onClick={() => {
                   setHelperMenuOpen(false);

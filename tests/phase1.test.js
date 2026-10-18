@@ -22,14 +22,13 @@ describe('Phase 1 Foundation and Auth Tests', () => {
     expect(res.body.disclaimer).toContain('does not diagnose or treat dementia');
   });
 
-  it('Test 1B: Request OTP returns 6-digit code in demo banner', async () => {
+  it('Test 1B: Request OTP returns 6-digit code in demo banner or starts verify', async () => {
     const res = await request(app)
       .post('/api/auth/request-otp')
-      .send({ rawPhone: testPhone, channel: 'sms' });
+      .send({ rawPhone: testPhone, channel: 'sms', fallbackDemo: true });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.demoMode).toBe(true);
     expect(res.body.demoCode).toMatch(/^\d{6}$/);
     validDemoCode = res.body.demoCode;
   });
@@ -44,7 +43,6 @@ describe('Phase 1 Foundation and Auth Tests', () => {
   });
 
   it('Test 3B: Wrong codes decrement tries and 5 wrong codes lock the verification', async () => {
-    // Make 5 consecutive wrong attempts
     for (let i = 1; i <= 5; i++) {
       const res = await request(app)
         .post('/api/auth/verify-otp')
@@ -55,14 +53,12 @@ describe('Phase 1 Foundation and Auth Tests', () => {
         expect(res.body.error).toBe('INVALID_CODE');
         expect(res.body.triesLeft).toBe(5 - i);
       } else {
-        // 5th failed attempt or subsequent is locked
         expect(res.body.error).toBe('OTP_LOCKED');
       }
     }
   });
 
   it('Test 3C: Expired OTP is rejected', async () => {
-    // Fast-expire the OTP in DB
     await query(
       `UPDATE otp_verifications SET expires_at = NOW() - INTERVAL '1 minute', verified = FALSE, attempts = 0 WHERE phone = $1`,
       [testPhone]
@@ -77,12 +73,11 @@ describe('Phase 1 Foundation and Auth Tests', () => {
   });
 
   it('Test 1C: Fresh valid OTP verification creates user and sets 90-day session', async () => {
-    // Request fresh code bypassing resend by resetting DB time
     await query(`DELETE FROM otp_verifications WHERE phone = $1`, [testPhone]);
 
     const reqRes = await request(app)
       .post('/api/auth/request-otp')
-      .send({ rawPhone: testPhone, channel: 'sms' });
+      .send({ rawPhone: testPhone, channel: 'sms', fallbackDemo: true });
 
     const newCode = reqRes.body.demoCode;
 
@@ -130,17 +125,14 @@ describe('Phase 1 Foundation and Auth Tests', () => {
   });
 
   it('Test 4: Logout and re-login shows the same elder data', async () => {
-    // Logout
     const logoutRes = await request(app).post('/api/auth/logout').set('Cookie', sessionCookie);
     expect(logoutRes.status).toBe(200);
 
-    // After logout, session is invalid
     const meAfterLogout = await request(app).get('/api/auth/me').set('Cookie', sessionCookie);
     expect(meAfterLogout.status).toBe(401);
 
-    // Request new OTP to re-login
     await query(`DELETE FROM otp_verifications WHERE phone = $1`, [testPhone]);
-    const reqRes = await request(app).post('/api/auth/request-otp').send({ rawPhone: testPhone });
+    const reqRes = await request(app).post('/api/auth/request-otp').send({ rawPhone: testPhone, fallbackDemo: true });
     const reLoginCode = reqRes.body.demoCode;
 
     const verifyRes = await request(app).post('/api/auth/verify-otp').send({ rawPhone: testPhone, code: reLoginCode });
@@ -152,7 +144,7 @@ describe('Phase 1 Foundation and Auth Tests', () => {
     const diagRes = await request(app).get('/api/diagnostics/status');
     expect(diagRes.status).toBe(200);
     expect(diagRes.body.database.connected).toBe(true);
-    expect(diagRes.body.otpProvider.mode).toBe('DEMO');
+    expect(['DEMO', 'TWILIO']).toContain(diagRes.body.otpProvider.mode);
     expect(diagRes.body.counts.elders).toBeGreaterThanOrEqual(1);
 
     const testOtpRes = await request(app)

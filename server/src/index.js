@@ -9,6 +9,7 @@ import { config } from './config.js';
 import { runMigrations } from './db.js';
 import { authMiddleware } from './middleware/auth.js';
 import { logServerError } from './errors.js';
+import { executeCronTick, startCronWorker } from './cron.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -16,6 +17,8 @@ import elderRoutes from './routes/elder.js';
 import diagnosticsRoutes from './routes/diagnostics.js';
 import healthRoutes from './routes/health.js';
 import geoRoutes from './routes/geo.js';
+import reportRoutes from './routes/reports.js';
+import locationRoutes from './routes/location.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,8 +47,30 @@ app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/elder', elderRoutes);
 app.use('/api/geo', geoRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/location', locationRoutes);
 
-// Mock push public key endpoint
+// Cron tick endpoint called by external pinger (cron-job.org) or internal worker
+app.get('/api/cron/tick', async (req, res) => {
+  const secret = req.query.secret || req.headers['x-cron-secret'] || req.headers.authorization?.replace(/^Bearer\s+/, '');
+  if (config.nodeEnv === 'production' && config.cronSecret && secret !== config.cronSecret) {
+    return res.status(401).json({ error: 'UNAUTHORIZED_CRON', message: 'Invalid or missing cron secret' });
+  }
+
+  try {
+    const result = await executeCronTick();
+    return res.json({ success: true, result });
+  } catch (err) {
+    logServerError({
+      message: `Error in /api/cron/tick: ${err.message}`,
+      route: '/api/cron/tick',
+      statusCode: 500,
+    });
+    return res.status(500).json({ error: 'CRON_ERROR', message: err.message });
+  }
+});
+
+// Push public key endpoint
 app.get('/api/push/public-key', (req, res) => {
   return res.json({ publicKey: config.vapidPublicKey });
 });
@@ -88,8 +113,10 @@ app.use((err, req, res, next) => {
 async function start() {
   try {
     await runMigrations();
+    startCronWorker();
     app.listen(config.port, '0.0.0.0', () => {
       console.log(`[Server] Smriti Saathi server listening on http://localhost:${config.port}`);
+      console.log(`[Server] Public Base URL: ${config.publicBaseUrl}`);
       console.log(`[Server] Environment: ${config.nodeEnv}, Demo Mode: ${config.demoMode}`);
     });
   } catch (err) {

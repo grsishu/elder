@@ -4,10 +4,13 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import EmergencyBar from './components/EmergencyBar';
+import LostCheckinModal from './components/LostCheckinModal';
 import Login from './pages/Login';
 import Onboarding from './pages/Onboarding';
 import Home from './pages/Home';
 import Diagnostics from './pages/Diagnostics';
+import Reports from './pages/Reports';
+import LiveLocation from './pages/LiveLocation';
 import { cancelSpeech } from './utils/voice';
 
 // Speech cancellation on route navigation
@@ -62,6 +65,32 @@ function MainLayout() {
             }
           />
           <Route path="/diagnostics" element={<Diagnostics />} />
+
+          {/* New Part A & Part B Live Caregiver & Safety Routes */}
+          <Route
+            path="/reports"
+            element={
+              <RequireAuth>
+                <Reports />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/live"
+            element={
+              <RequireAuth>
+                <LiveLocation />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/live/:elderId"
+            element={
+              <RequireAuth>
+                <LiveLocation />
+              </RequireAuth>
+            }
+          />
 
           {/* Fallback routes for other phases */}
           <Route
@@ -123,6 +152,10 @@ function MainLayout() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      {/* Elder Full-Screen Lost Check-in Popup */}
+      <LostCheckinModal />
+
       <Footer />
       {/* Pinned SOS bar appears on all screens except /login */}
       {!isLoginPage && <EmergencyBar />}

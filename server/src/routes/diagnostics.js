@@ -2,6 +2,7 @@ import express from 'express';
 import { pool, query } from '../db.js';
 import { getTwilioStatus, sendOtp } from '../services/twilio.js';
 import { getRecentErrors } from '../errors.js';
+import { getCronDiagnostics } from '../cron.js';
 import { config } from '../config.js';
 
 const router = express.Router();
@@ -21,8 +22,10 @@ router.get('/status', async (req, res) => {
     dbStatus.error = err.message;
   }
 
-  // Fetch counts from DB
-  let counts = { users: 0, elders: 0, places: 0, medicines: 0, sos_events: 0 };
+  // Fetch counts and fresh location count from DB
+  let counts = { users: 0, elders: 0, places: 0, medicines: 0, sos_events: 0, reports: 0, lostChecks: 0 };
+  let freshLocationsCount = 0;
+
   if (dbStatus.connected) {
     try {
       const uCount = await query('SELECT count(*)::int as c FROM users');
@@ -30,13 +33,24 @@ router.get('/status', async (req, res) => {
       const pCount = await query('SELECT count(*)::int as c FROM saved_places');
       const mCount = await query('SELECT count(*)::int as c FROM medicines');
       const sCount = await query('SELECT count(*)::int as c FROM sos_events');
+      const rCount = await query('SELECT count(*)::int as c FROM report_drafts');
+      const lCount = await query('SELECT count(*)::int as c FROM lost_checks');
+
+      // Count elders with a location fix within the last 15 minutes
+      const freshRes = await query(
+        `SELECT count(*)::int as c FROM elders WHERE last_known_at >= NOW() - INTERVAL '15 minutes'`
+      );
+
       counts = {
         users: uCount.rows[0].c,
         elders: eCount.rows[0].c,
         places: pCount.rows[0].c,
         medicines: mCount.rows[0].c,
         sos_events: sCount.rows[0].c,
+        reports: rCount.rows[0].c,
+        lostChecks: lCount.rows[0].c,
       };
+      freshLocationsCount = freshRes.rows[0]?.c || 0;
     } catch {
       // ignore
     }
@@ -45,14 +59,23 @@ router.get('/status', async (req, res) => {
   const twilioStatus = getTwilioStatus();
   const pushConfigured = Boolean(config.vapidPublicKey && config.vapidPrivateKey);
   const recentErrors = getRecentErrors();
+  const cronDiag = getCronDiagnostics();
 
   return res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     demoMode: config.demoMode,
+    publicBaseUrl: config.publicBaseUrl,
     database: dbStatus,
     databaseUrlMasked: config.databaseUrl.replace(/:[^:@]*@/, ':****@'),
     counts,
+    eldersWithFreshLocation: freshLocationsCount,
+    lastLocationCheck: cronDiag.lastLocationCheckTime,
+    lastReportJob: cronDiag.lastReportJobTime,
+    gemini: {
+      configured: Boolean(config.geminiApiKey),
+      model: 'gemini-2.5-flash',
+    },
     otpProvider: {
       mode: config.demoMode ? 'DEMO' : 'TWILIO',
       twilioConfigured: twilioStatus.configured,

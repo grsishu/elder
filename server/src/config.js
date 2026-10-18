@@ -24,4 +24,5 @@ export const config = {
     phoneNumber: process.env.TWILIO_PHONE_NUMBER || '',
   },
   geminiApiKey: process.env.GEMINI_API_KEY || '',
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:5000',
 };
