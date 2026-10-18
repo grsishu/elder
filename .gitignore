@@ -1,0 +1,11 @@
+node_modules/
+.env
+dist/
+client/dist/
+server/public/assets/
+.DS_Store
+Thumbs.db
+*.log
+coverage/
+.vscode/
+.idea/

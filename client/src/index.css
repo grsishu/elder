@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #FAF5EF; /* Warm elder-friendly background */
+  color: #0F172A;
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* Elder Accessibility overrides */
+.elder-mode {
+  font-size: 20px;
+}
+
+.high-contrast {
+  filter: contrast(125%);
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+}
+
+.high-contrast .bg-white {
+  background-color: #121212 !important;
+  color: #FFFFFF !important;
+  border-color: #FBBF24 !important;
+}
+
+.high-contrast button {
+  border: 3px solid #FBBF24 !important;
+}
+
+/* Big touch target styling (at least 72px) */
+.btn-elder {
+  min-height: 72px;
+  min-width: 72px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1.25rem;
+  font-weight: 700;
+  font-size: 1.35rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.btn-elder:active {
+  transform: scale(0.97);
+}
+
+/* Soft glass cards */
+.elder-card {
+  background: #FFFFFF;
+  border-radius: 1.5rem;
+  border: 2px solid #E2E8F0;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+}
+
+/* Pulsing SOS ring animation */
+@keyframes sos-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+
+.sos-ring {
+  animation: sos-pulse 1.8s infinite;
+}
