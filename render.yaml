@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: smriti-saathi
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: DEMO_MODE
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: elder-db
+          property: connectionString
+
+databases:
+  - name: elder-db
+    plan: starter
+    region: oregon
+    databaseName: elder_db
+    user: elder_user

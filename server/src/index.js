@@ -48,7 +48,8 @@ app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 // Global auth context extraction (cookie or Authorization header)
 app.use(authMiddleware);
 
-// API Routes
+// Health check endpoint (for Render and monitoring)
+app.use('/health', healthRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/auth', authRoutes);
@@ -135,8 +136,9 @@ async function start() {
   try {
     await runMigrations();
     startCronWorker();
-    app.listen(config.port, () => {
-      console.log(`[Server] Smriti Saathi server listening on port ${config.port} (IPv4 + IPv6)`);
+    const port = parseInt(process.env.PORT || String(config.port), 10);
+    app.listen(port, '0.0.0.0', () => {
+      console.log(`[Server] Smriti Saathi server listening on 0.0.0.0:${port}`);
       console.log(`[Server] Public Base URL: ${config.publicBaseUrl}`);
       console.log(`[Server] Environment: ${config.nodeEnv}, Demo Mode: ${config.demoMode}`);
     });

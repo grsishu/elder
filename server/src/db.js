@@ -39,10 +39,19 @@ export async function initDb() {
 
   if (!isSqlite) {
     try {
+      const isRemotePg =
+        config.databaseUrl.includes('render.com') ||
+        config.databaseUrl.includes('neon.tech') ||
+        config.databaseUrl.includes('supabase.co') ||
+        config.databaseUrl.includes('sslmode=require') ||
+        config.databaseUrl.includes('amazonaws.com') ||
+        process.env.PGSSLMODE === 'require' ||
+        (config.nodeEnv === 'production' && !config.databaseUrl.includes('localhost') && !config.databaseUrl.includes('127.0.0.1'));
+
       pgPool = new Pool({
         connectionString: config.databaseUrl,
-        ssl: config.databaseUrl.includes('neon.tech') ? { rejectUnauthorized: false } : false,
-        connectionTimeoutMillis: 3000,
+        ssl: isRemotePg ? { rejectUnauthorized: false } : false,
+        connectionTimeoutMillis: 5000,
       });
 
       // Quick test query to verify Postgres connectivity
