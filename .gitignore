@@ -9,3 +9,6 @@ Thumbs.db
 coverage/
 .vscode/
 .idea/
+server/data/
+server/uploads/
+prompt10*.txt

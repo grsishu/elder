@@ -296,6 +296,56 @@ router.get('/me', async (req, res) => {
   });
 });
 
+// POST /api/auth/demo-quick-login - Instant access for reviewers & public visitors
+router.post('/demo-quick-login', async (req, res) => {
+  try {
+    const demoPhone = '+919876543210';
+    let userRes = await query(`SELECT id, phone, role, created_at FROM users WHERE phone = $1`, [demoPhone]);
+    if (userRes.rows.length === 0) {
+      userRes = await query(
+        `INSERT INTO users (phone, role) VALUES ($1, 'caregiver') RETURNING id, phone, role, created_at`,
+        [demoPhone]
+      );
+    }
+    const user = userRes.rows[0];
+
+    // Ensure elder profile
+    let elderRes = await query(`SELECT id, name, age, language, region, voice_speed FROM elders WHERE user_id = $1 LIMIT 1`, [user.id]);
+    if (elderRes.rows.length === 0) {
+      elderRes = await query(
+        `INSERT INTO elders (user_id, name, age, language, region) VALUES ($1, 'Ramesh', 74, 'en', 'Assam') RETURNING id, name, age, language, region, voice_speed`,
+        [user.id]
+      );
+    }
+
+    const rawSessionToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawSessionToken).digest('hex');
+    const sessionExpiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+
+    await query(
+      `INSERT INTO user_sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+      [user.id, tokenHash, sessionExpiresAt]
+    );
+
+    res.cookie('smriti_session', rawSessionToken, {
+      httpOnly: true,
+      secure: config.nodeEnv === 'production',
+      sameSite: 'lax',
+      maxAge: 90 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({
+      success: true,
+      token: rawSessionToken,
+      user,
+      elder: elderRes.rows[0],
+      message: 'Logged in as Demo User',
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+  }
+});
+
 // POST /api/auth/logout
 router.post('/logout', async (req, res) => {
   const token = req.cookies?.smriti_session || req.headers.authorization?.replace(/^Bearer\s+/, '');

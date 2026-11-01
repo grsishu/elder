@@ -1,8 +1,26 @@
 /**
  * Shared Location Module for Smriti Saathi
- * Used across address pin, I am lost, Silent Guardian, ride pickup, and family live tracking.
- * NEVER call navigator.geolocation anywhere else.
+ * Used across address pin, Take Me Home, Silent Guardian, ride pickup, family live tracking, and diagnostics.
+ * THIS IS THE ONLY FILE IN THE CLIENT CODEBASE THAT CALLS navigator.geolocation.
  */
+
+import {
+  WebLocationProvider,
+  NativeLocationProvider,
+  mapGeolocationError,
+} from './locationProvider.js';
+import {
+  startLocationScheduler,
+  stopLocationScheduler,
+  setGuardianMode,
+  flushLocationQueue,
+  captureAndProcessFix,
+  isSchedulerRunning,
+  getLastCapturedTime,
+  setLocationProvider,
+  getLocationProvider,
+} from './locationScheduler.js';
+import { enqueueSample, getPendingSamples, removeSamples, clearQueue } from './locationQueue.js';
 
 let simulatedLocation = null;
 const SIMULATION_KEY = 'smriti_simulated_location';
@@ -10,18 +28,22 @@ const LAST_KNOWN_KEY = 'smriti_last_known_location';
 
 // Try loading simulated location from storage for Demo Mode
 try {
-  const savedSim = localStorage.getItem(SIMULATION_KEY);
-  if (savedSim) simulatedLocation = JSON.parse(savedSim);
+  if (typeof localStorage !== 'undefined') {
+    const savedSim = localStorage.getItem(SIMULATION_KEY);
+    if (savedSim) simulatedLocation = JSON.parse(savedSim);
+  }
 } catch {
   // ignore
 }
 
 export function setSimulatedLocation(coords) {
   simulatedLocation = coords;
-  if (coords) {
-    localStorage.setItem(SIMULATION_KEY, JSON.stringify(coords));
-  } else {
-    localStorage.removeItem(SIMULATION_KEY);
+  if (typeof localStorage !== 'undefined') {
+    if (coords) {
+      localStorage.setItem(SIMULATION_KEY, JSON.stringify(coords));
+    } else {
+      localStorage.removeItem(SIMULATION_KEY);
+    }
   }
 }
 
@@ -31,6 +53,7 @@ export function getSimulatedLocation() {
 
 export function getLastKnownLocation() {
   try {
+    if (typeof localStorage === 'undefined') return null;
     const raw = localStorage.getItem(LAST_KNOWN_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
@@ -38,14 +61,15 @@ export function getLastKnownLocation() {
   }
 }
 
-function saveLastKnownLocation(loc) {
+export function saveLastKnownLocation(loc) {
   try {
+    if (typeof localStorage === 'undefined') return;
     localStorage.setItem(
       LAST_KNOWN_KEY,
       JSON.stringify({
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        accuracy: loc.accuracy,
+        latitude: loc.latitude || loc.lat,
+        longitude: loc.longitude || loc.lng,
+        accuracy: loc.accuracy || loc.accuracy_m,
         timestamp: new Date().toISOString(),
       })
     );
@@ -77,16 +101,22 @@ export async function getPermissionStatus() {
   return 'prompt';
 }
 
+// Instantiate default web provider connected to simulated location getter
+const defaultWebProvider = new WebLocationProvider({
+  getSimulatedLocation,
+});
+setLocationProvider(defaultWebProvider);
+
 /**
  * Gets high-accuracy position with automatic fallback and retry.
  * @returns {Promise<{ latitude: number, longitude: number, accuracy: number, simulated?: boolean, isFallback?: boolean }>}
  */
 export async function getCurrentLocation() {
-  // 1. Check for Simulation (Demo Mode override)
+  // 1. Simulation override
   if (simulatedLocation) {
     return {
-      latitude: simulatedLocation.latitude,
-      longitude: simulatedLocation.longitude,
+      latitude: simulatedLocation.latitude || simulatedLocation.lat,
+      longitude: simulatedLocation.longitude || simulatedLocation.lng,
       accuracy: simulatedLocation.accuracy || 10,
       simulated: true,
       timestamp: new Date().toISOString(),
@@ -101,73 +131,33 @@ export async function getCurrentLocation() {
     };
   }
 
-  if (typeof navigator === 'undefined' || !navigator.geolocation) {
-    throw {
-      code: 'NOT_SUPPORTED',
-      message: 'Geolocation is not supported by your device.',
-    };
-  }
-
-  // Helper promise for getCurrentPosition with customizable options
-  const getFix = (options) =>
-    new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, options);
-    });
-
-  // Attempt 1: High accuracy, 15s timeout
+  const provider = getLocationProvider();
   try {
-    const pos = await getFix({
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 10000,
-    });
-    const fix = {
-      latitude: pos.coords.latitude,
-      longitude: pos.coords.longitude,
-      accuracy: pos.coords.accuracy,
-      timestamp: new Date(pos.timestamp).toISOString(),
+    const fix = await provider.getCurrentPosition();
+    const result = {
+      latitude: fix.lat,
+      longitude: fix.lng,
+      accuracy: fix.accuracy_m,
+      speed: fix.speed_mps,
+      heading: fix.heading,
+      battery: fix.battery_pct,
+      source: fix.source,
+      simulated: fix.source === 'simulated',
+      timestamp: fix.captured_at,
     };
-    saveLastKnownLocation(fix);
-    return fix;
-  } catch (firstErr) {
-    // If timeout, retry once with enableHighAccuracy: false
-    if (firstErr.code === 3) {
-      try {
-        const retryPos = await getFix({
-          enableHighAccuracy: false,
-          timeout: 10000,
-          maximumAge: 30000,
-        });
-        const retryFix = {
-          latitude: retryPos.coords.latitude,
-          longitude: retryPos.coords.longitude,
-          accuracy: retryPos.coords.accuracy,
-          timestamp: new Date(retryPos.timestamp).toISOString(),
-          isRetry: true,
-        };
-        saveLastKnownLocation(retryFix);
-        return retryFix;
-      } catch (secondErr) {
-        // Fall back to last known location if available
-        const lastKnown = getLastKnownLocation();
-        if (lastKnown) {
-          return { ...lastKnown, isFallback: true };
-        }
-        throw mapGeolocationError(secondErr);
-      }
-    }
-
-    // If permission denied or other error
+    saveLastKnownLocation(result);
+    return result;
+  } catch (err) {
     const lastKnown = getLastKnownLocation();
-    if (lastKnown && firstErr.code !== 1) {
+    if (lastKnown && err.code !== 'PERMISSION_DENIED') {
       return { ...lastKnown, isFallback: true };
     }
-    throw mapGeolocationError(firstErr);
+    throw err;
   }
 }
 
 /**
- * Watch location for tracking, throttled to send at most once every 30 seconds.
+ * Watch location for continuous tracking throttled to at most once per 30s
  */
 let watchId = null;
 let lastWatchSendTime = 0;
@@ -176,8 +166,8 @@ export function startLocationWatch(onLocationUpdate, onError) {
   if (simulatedLocation) {
     const interval = setInterval(() => {
       onLocationUpdate({
-        latitude: simulatedLocation.latitude,
-        longitude: simulatedLocation.longitude,
+        latitude: simulatedLocation.latitude || simulatedLocation.lat,
+        longitude: simulatedLocation.longitude || simulatedLocation.lng,
         accuracy: simulatedLocation.accuracy || 10,
         simulated: true,
         timestamp: new Date().toISOString(),
@@ -225,30 +215,22 @@ export function stopLocationWatch() {
   }
 }
 
-function mapGeolocationError(err) {
-  if (err.code === 1) {
-    return {
-      code: 'PERMISSION_DENIED',
-      message: 'Location permission was denied. Please allow location in your browser settings.',
-      details: err.message,
-    };
-  }
-  if (err.code === 2) {
-    return {
-      code: 'POSITION_UNAVAILABLE',
-      message: 'Turn on GPS and move near a window or outdoors.',
-      details: err.message,
-    };
-  }
-  if (err.code === 3) {
-    return {
-      code: 'TIMEOUT',
-      message: 'Finding location timed out. Please tap retry.',
-      details: err.message,
-    };
-  }
-  return {
-    code: 'UNKNOWN',
-    message: err.message || 'Could not determine location.',
-  };
-}
+// Export Scheduler and Providers
+export {
+  startLocationScheduler,
+  stopLocationScheduler,
+  setGuardianMode,
+  flushLocationQueue,
+  captureAndProcessFix,
+  isSchedulerRunning,
+  getLastCapturedTime,
+  WebLocationProvider,
+  NativeLocationProvider,
+  enqueueSample,
+  getPendingSamples,
+  removeSamples,
+  clearQueue,
+  mapGeolocationError,
+  setLocationProvider,
+  getLocationProvider,
+};

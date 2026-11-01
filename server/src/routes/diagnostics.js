@@ -41,14 +41,29 @@ router.get(['/status', '/'], async (req, res) => {
         `SELECT count(*)::int as c FROM elders WHERE last_known_at >= NOW() - INTERVAL '15 minutes'`
       );
 
+      const uPlaces = await query(`SELECT origin, count(*)::int as c FROM usual_places GROUP BY origin`);
+      const sampleCount = await query(`SELECT count(*)::int as c FROM location_samples`);
+      const latestCheck = await query(
+        `SELECT id, elder_id, status, level, risk_score, reasons_json, nearest_place, distance_m, started_at
+         FROM lost_checks ORDER BY started_at DESC LIMIT 1`
+      );
+
+      const usualPlacesBreakdown = { saved: 0, learned: 0, approved: 0 };
+      uPlaces.rows.forEach(r => {
+        usualPlacesBreakdown[r.origin] = r.c;
+      });
+
       counts = {
         users: uCount.rows[0].c,
         elders: eCount.rows[0].c,
         places: pCount.rows[0].c,
+        usualPlaces: usualPlacesBreakdown,
+        locationSamples: sampleCount.rows[0].c,
         medicines: mCount.rows[0].c,
         sos_events: sCount.rows[0].c,
         reports: rCount.rows[0].c,
         lostChecks: lCount.rows[0].c,
+        latestLostCheck: latestCheck.rows[0] || null,
       };
       freshLocationsCount = freshRes.rows[0]?.c || 0;
     } catch {

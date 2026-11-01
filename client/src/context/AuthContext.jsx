@@ -24,12 +24,36 @@ export function AuthProvider({ children }) {
             localStorage.setItem('smriti_voice_speed', String(data.elder.voice_speed));
           }
         } else {
+          try {
+            const demoRes = await fetch('/api/auth/demo-quick-login', { method: 'POST' });
+            if (demoRes.ok) {
+              const demoData = await demoRes.json();
+              setUser(demoData.user);
+              setElder(demoData.elder);
+            } else {
+              setUser(null);
+              setElder(null);
+            }
+          } catch {
+            setUser(null);
+            setElder(null);
+          }
+        }
+      } else {
+        try {
+          const demoRes = await fetch('/api/auth/demo-quick-login', { method: 'POST' });
+          if (demoRes.ok) {
+            const demoData = await demoRes.json();
+            setUser(demoData.user);
+            setElder(demoData.elder);
+          } else {
+            setUser(null);
+            setElder(null);
+          }
+        } catch {
           setUser(null);
           setElder(null);
         }
-      } else {
-        setUser(null);
-        setElder(null);
       }
     } catch (err) {
       console.warn('[AuthContext] checkAuth failed:', err.message);

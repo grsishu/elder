@@ -44,7 +44,7 @@ export default function Wizard() {
   });
 
   const [homePlace, setHomePlace] = useState({
-    name: 'Home (घर)',
+    name: 'Home',
     address: 'Uzan Bazar, Guwahati, Assam',
     latitude: '26.1865',
     longitude: '91.7541',
@@ -53,7 +53,7 @@ export default function Wizard() {
   const [familyList, setFamilyList] = useState([]);
   const [newFamily, setNewFamily] = useState({
     name: '',
-    relationship: 'Son (बेटा)',
+    relationship: 'Son',
     phone: '',
     address: '',
     isEmergencyContact: true,
@@ -242,7 +242,7 @@ export default function Wizard() {
       setFamilyList([...familyList, data.member]);
       setNewFamily({
         name: '',
-        relationship: 'Daughter (बेटी)',
+        relationship: 'Daughter',
         phone: '',
         address: '',
         isEmergencyContact: true,
@@ -404,7 +404,7 @@ export default function Wizard() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-black text-slate-800">
-              Elder Setup Wizard (मार्गदर्शन)
+              Elder Setup Wizard
             </h1>
             <p className="text-sm text-slate-500">Step {currentStep} of 9</p>
           </div>

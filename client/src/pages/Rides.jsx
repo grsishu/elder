@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Car,
   MapPin,
@@ -18,6 +19,9 @@ import { speak } from '../utils/voice';
 
 export default function Rides() {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+  const isHindi = i18n.language.startsWith('hi');
+
   const [vehicleType, setVehicleType] = useState('auto'); // auto or cab
   const [places, setPlaces] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
@@ -35,14 +39,15 @@ export default function Rides() {
           setPlaces(d.places);
           setSelectedPlace(d.places[0]);
         }
-      });
+      })
+      .catch(() => {});
 
     getCurrentLocation().then(setCurrentLoc).catch(() => {});
   }, []);
 
   const handleRequestRide = async () => {
     if (!selectedPlace) {
-      alert('Please choose a destination.');
+      alert(isHindi ? 'कृपया गंतव्य चुनें।' : 'Please choose a destination.');
       return;
     }
 
@@ -54,7 +59,7 @@ export default function Rides() {
         credentials: 'include',
         body: JSON.stringify({
           vehicleType,
-          pickupAddress: currentLoc ? 'Current GPS Location' : 'Home Address',
+          pickupAddress: currentLoc ? (isHindi ? 'वर्तमान स्थान' : 'Current GPS Location') : (isHindi ? 'घर का पता' : 'Home Address'),
           pickupLat: currentLoc?.latitude,
           pickupLng: currentLoc?.longitude,
           destAddress: selectedPlace.address || selectedPlace.name,
@@ -65,9 +70,14 @@ export default function Rides() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setActiveRide(data);
-      speak(`Ride requested to ${selectedPlace.name}. Estimated fare is ₹${data.estimatedFare}.`, {
-        lang: 'en',
-        rate: 0.8,
+
+      const msg = isHindi
+        ? `${selectedPlace.name} के लिए सवारी का अनुरोध भेजा गया। अनुमानित किराया ₹${data.estimatedFare} है।`
+        : `Ride requested to ${selectedPlace.name}. Estimated fare is ₹${data.estimatedFare}.`;
+
+      speak(msg, {
+        lang: isHindi ? 'hi' : 'en',
+        rate: 0.65,
       });
     } catch (err) {
       alert(err.message);
@@ -87,27 +97,37 @@ export default function Rides() {
     }
     setRatingModal(false);
     setActiveRide(null);
-    speak('Thank you! Your ride has been safely completed.', { lang: 'en', rate: 0.8 });
+
+    const compMsg = isHindi
+      ? 'धन्यवाद! आपकी यात्रा सुरक्षित रूप से पूर्ण हुई।'
+      : 'Thank you! Your ride has been safely completed.';
+
+    speak(compMsg, { lang: isHindi ? 'hi' : 'en', rate: 0.65 });
   };
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
-        <button onClick={() => navigate('/')} className="p-2 text-slate-400 hover:text-slate-600 rounded-full">
+        <button
+          onClick={() => navigate('/')}
+          className="p-2.5 text-slate-500 hover:text-slate-800 rounded-full hover:bg-slate-100 transition"
+          aria-label="Back"
+        >
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-          <Car className="w-7 h-7 text-amber-500" /> EasyRide (सवारी)
+          <Car className="w-7 h-7 text-amber-500" />
+          <span>{t('home.easyride_btn')}</span>
         </h1>
         <div className="w-8" />
       </div>
 
       {!activeRide ? (
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-6">
-          {/* Vehicle Type Selection (Giant buttons) */}
+          {/* Vehicle Type Selection */}
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-              Choose Vehicle (गाड़ी चुनें)
+              {isHindi ? 'वाहन चुनें' : 'Choose Vehicle'}
             </label>
             <div className="grid grid-cols-2 gap-4">
               <button
@@ -119,7 +139,7 @@ export default function Rides() {
                 }`}
               >
                 <span className="text-3xl mb-1">🛺</span>
-                <span className="font-black text-lg">Auto Rickshaw</span>
+                <span className="font-black text-lg">{t('easyride.auto')}</span>
                 <span className="text-[11px] font-semibold text-slate-500">₹30 base + ₹12/km</span>
               </button>
 
@@ -132,7 +152,7 @@ export default function Rides() {
                 }`}
               >
                 <span className="text-3xl mb-1">🚕</span>
-                <span className="font-black text-lg">Taxi / Cab</span>
+                <span className="font-black text-lg">{t('easyride.cab')}</span>
                 <span className="text-[11px] font-semibold text-slate-500">₹50 base + ₹18/km</span>
               </button>
             </div>
@@ -141,7 +161,7 @@ export default function Rides() {
           {/* Destination Cards */}
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-              Select Destination (कहाँ जाना है?)
+              {isHindi ? 'कहाँ जाना है?' : 'Select Destination'}
             </label>
             <div className="space-y-2.5">
               {places.map((place) => {
@@ -175,9 +195,18 @@ export default function Rides() {
           <button
             onClick={handleRequestRide}
             disabled={loading}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-4 rounded-2xl shadow-lg text-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-4 rounded-2xl shadow-lg text-base sm:text-lg flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-50"
           >
-            <Car className="w-6 h-6" /> {loading ? 'Booking Ride...' : 'Book Ride with Family Driver'}
+            <Car className="w-6 h-6" />
+            <span>
+              {loading
+                ? isHindi
+                  ? 'सवारी बुक हो रही है...'
+                  : 'Booking Ride...'
+                : isHindi
+                ? 'सवारी बुक करें'
+                : 'Book Ride with Family Driver'}
+            </span>
           </button>
         </div>
       ) : (
@@ -189,21 +218,27 @@ export default function Rides() {
 
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-amber-600">
-              Ride Dispatched
+              {isHindi ? 'सवारी आ रही है' : 'Ride Dispatched'}
             </span>
             <h2 className="text-2xl font-black text-slate-800 mt-1">
-              {activeRide.driver?.name || 'Trusted Driver'}
+              {activeRide.driver?.name || (isHindi ? 'चालक' : 'Trusted Driver')}
             </h2>
-            <p className="text-xs text-slate-500">{activeRide.driver?.vehicle_type?.toUpperCase()} • {activeRide.driver?.area}</p>
+            <p className="text-xs text-slate-500">
+              {activeRide.driver?.vehicle_type?.toUpperCase()} • {activeRide.driver?.area}
+            </p>
           </div>
 
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center justify-between">
             <div className="text-left">
-              <span className="text-[10px] font-bold text-slate-400 block">Estimated Fare</span>
+              <span className="text-[10px] font-bold text-slate-400 block">
+                {isHindi ? 'अनुमानित किराया' : 'Estimated Fare'}
+              </span>
               <span className="text-xl font-black text-slate-800">₹{activeRide.estimatedFare}</span>
             </div>
             <div className="text-right">
-              <span className="text-[10px] font-bold text-slate-400 block">Distance</span>
+              <span className="text-[10px] font-bold text-slate-400 block">
+                {isHindi ? 'दूरी' : 'Distance'}
+              </span>
               <span className="text-base font-black text-indigo-600">{activeRide.distanceKm} km</span>
             </div>
           </div>
@@ -215,7 +250,8 @@ export default function Rides() {
                 href={activeRide.callLink}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl text-sm flex items-center justify-center gap-2 shadow-sm"
               >
-                <Phone className="w-4 h-4" /> Call Driver
+                <Phone className="w-4 h-4" />
+                <span>{t('easyride.call_driver')}</span>
               </a>
             )}
             {activeRide.whatsappLink && (
@@ -225,7 +261,8 @@ export default function Rides() {
                 rel="noreferrer"
                 className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-2xl text-sm flex items-center justify-center gap-2 shadow-sm"
               >
-                <MessageCircle className="w-4 h-4" /> WhatsApp
+                <MessageCircle className="w-4 h-4" />
+                <span>WhatsApp</span>
               </a>
             )}
           </div>
@@ -234,7 +271,7 @@ export default function Rides() {
             onClick={() => setRatingModal(true)}
             className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl text-sm"
           >
-            Trip Completed (सवारी पूरी हुई)
+            {isHindi ? 'सवारी पूर्ण हुई' : 'Trip Completed'}
           </button>
         </div>
       )}
@@ -243,8 +280,9 @@ export default function Rides() {
       {ratingModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl">
-            <h3 className="text-xl font-black text-slate-800 mb-1">How was your ride?</h3>
-            <p className="text-xs text-slate-500 mb-6">आपकी यात्रा कैसी रही?</p>
+            <h3 className="text-xl font-black text-slate-800 mb-6">
+              {isHindi ? 'आपकी यात्रा कैसी रही?' : 'How was your ride?'}
+            </h3>
 
             <div className="flex justify-around mb-6">
               <button
@@ -252,21 +290,23 @@ export default function Rides() {
                 className="p-4 rounded-2xl hover:bg-rose-50 text-rose-500 flex flex-col items-center gap-1 transition-transform active:scale-90"
               >
                 <Frown className="w-12 h-12" />
-                <span className="text-xs font-bold">Uncomfortable</span>
+                <span className="text-xs font-bold">
+                  {isHindi ? 'असुविधाजनक' : 'Uncomfortable'}
+                </span>
               </button>
               <button
                 onClick={() => handleCompleteRide(2)}
                 className="p-4 rounded-2xl hover:bg-amber-50 text-amber-500 flex flex-col items-center gap-1 transition-transform active:scale-90"
               >
                 <Meh className="w-12 h-12" />
-                <span className="text-xs font-bold">Okay</span>
+                <span className="text-xs font-bold">{isHindi ? 'सामान्य' : 'Okay'}</span>
               </button>
               <button
                 onClick={() => handleCompleteRide(3)}
                 className="p-4 rounded-2xl hover:bg-emerald-50 text-emerald-500 flex flex-col items-center gap-1 transition-transform active:scale-90"
               >
                 <Smile className="w-12 h-12" />
-                <span className="text-xs font-bold">Great!</span>
+                <span className="text-xs font-bold">{isHindi ? 'बहुत अच्छा' : 'Great!'}</span>
               </button>
             </div>
           </div>

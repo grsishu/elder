@@ -273,8 +273,8 @@ export default function Diagnostics() {
               <span>{t('diagnostics.location_card')}</span>
             </div>
             {simActive ? (
-              <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-xl text-xs font-black">
-                GPS SIMULATED
+              <span className="px-3 py-1 bg-red-600 text-white rounded-xl text-xs font-black tracking-wider animate-pulse">
+                SIMULATED
               </span>
             ) : locState.secure ? (
               <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-black">
@@ -291,8 +291,11 @@ export default function Diagnostics() {
             <div>Secure Context (HTTPS/localhost): {locState.secure ? 'YES' : 'NO'}</div>
             <div>Browser Permission: {locState.permission.toUpperCase()}</div>
             {locState.currentFix && (
-              <div className="text-emerald-700 font-bold">
-                Last Fix: Lat {locState.currentFix.latitude.toFixed(5)}, Lng {locState.currentFix.longitude.toFixed(5)} (Acc: {locState.currentFix.accuracy}m) {locState.currentFix.simulated ? '[SIMULATED]' : ''}
+              <div className="text-emerald-700 font-bold flex items-center gap-2">
+                <span>Last Fix: Lat {locState.currentFix.latitude.toFixed(5)}, Lng {locState.currentFix.longitude.toFixed(5)} (Acc: {locState.currentFix.accuracy}m)</span>
+                {locState.currentFix.simulated && (
+                  <span className="px-1.5 py-0.5 bg-red-600 text-white text-[10px] rounded font-bold">SIMULATED</span>
+                )}
               </div>
             )}
             {locState.error && <div className="text-red-600 font-bold">Error: {locState.error}</div>}
@@ -308,43 +311,66 @@ export default function Diagnostics() {
             <span>Test My Location Fix</span>
           </button>
 
-          {/* Simulate Location Override for Demo Mode */}
-          <div className="pt-2 border-t space-y-2">
-            <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
-              <span>{t('diagnostics.simulate_gps_title')}</span>
-              {simActive && (
-                <button
-                  onClick={handleClearSimLocation}
-                  className="text-red-600 hover:underline text-xs"
-                >
-                  Clear Mock
-                </button>
-              )}
+          {/* Dev Tool: Simulate Location Override - WORKS ONLY WHEN DEMO_MODE=true */}
+          {status?.demoMode ? (
+            <div className="pt-2 border-t space-y-2">
+              <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span>{t('diagnostics.simulate_gps_title')}</span>
+                {simActive && (
+                  <button
+                    onClick={handleClearSimLocation}
+                    className="text-red-600 hover:underline text-xs"
+                  >
+                    Clear Mock
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={simLat}
+                  onChange={(e) => setSimLat(e.target.value)}
+                  placeholder="Latitude"
+                  className="px-2 py-1.5 text-xs rounded-xl border font-mono"
+                />
+                <input
+                  type="text"
+                  value={simLng}
+                  onChange={(e) => setSimLng(e.target.value)}
+                  placeholder="Longitude"
+                  className="px-2 py-1.5 text-xs rounded-xl border font-mono"
+                />
+              </div>
+              <button
+                id="apply-mock-gps-btn"
+                onClick={handleApplySimLocation}
+                className="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold"
+              >
+                {t('diagnostics.apply_simulation')}
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="text"
-                value={simLat}
-                onChange={(e) => setSimLat(e.target.value)}
-                placeholder="Latitude"
-                className="px-2 py-1.5 text-xs rounded-xl border font-mono"
-              />
-              <input
-                type="text"
-                value={simLng}
-                onChange={(e) => setSimLng(e.target.value)}
-                placeholder="Longitude"
-                className="px-2 py-1.5 text-xs rounded-xl border font-mono"
-              />
+          ) : (
+            <div className="pt-2 border-t text-[11px] text-slate-500 italic">
+              GPS simulation is disabled in real mode. It is only permitted when DEMO_MODE=true.
             </div>
-            <button
-              id="apply-mock-gps-btn"
-              onClick={handleApplySimLocation}
-              className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold"
-            >
-              {t('diagnostics.apply_simulation')}
-            </button>
+          )}
+        </div>
+
+        {/* Section 9: Native Background Location Status */}
+        <div className="bg-white p-5 rounded-3xl border-2 border-slate-200 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-bold text-lg text-slate-900">
+              <Smartphone className="w-6 h-6 text-slate-700" />
+              <span>Native Background Geolocation</span>
+            </div>
+            <span className="px-3 py-1 bg-amber-100 text-amber-900 rounded-xl text-xs font-black uppercase">
+              UNTESTED
+            </span>
           </div>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Capacitor Android wrapper with foreground service and persistent notification (&ldquo;Smriti Saathi is keeping you safe&rdquo;).
+            Notice: <b>This native feature is UNTESTED until verified on a real physical Android phone</b> with an APK build in Android Studio.
+          </p>
         </div>
 
         {/* 4. Voice Synthesizer Status */}

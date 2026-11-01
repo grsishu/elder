@@ -1,0 +1,27 @@
+{
+  "appId": "in.smritisaathi.guardian",
+  "appName": "Smriti Saathi",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "BackgroundGeolocation": {
+      "notificationTitle": "Smriti Saathi",
+      "notificationText": "Smriti Saathi is keeping you safe",
+      "interval": 300000,
+      "fastestInterval": 120000,
+      "activitiesInterval": 300000,
+      "stopOnTerminate": false,
+      "startOnBoot": true,
+      "backgroundPermissionRationale": {
+        "title": "Background Location Access Needed",
+        "message": "Smriti Saathi protects elderly users by monitoring safety and notifying caregivers even when the phone is locked or app is closed.",
+        "positiveAction": "Change to Allow all the time",
+        "negativeAction": "Cancel"
+      }
+    }
+  }
+}
+

@@ -14,6 +14,8 @@ import {
   BarChart2,
   ChevronRight,
   Star,
+  Eye,
+  Search,
 } from 'lucide-react';
 import MoodModal from '../../components/MoodModal';
 import { speak } from '../../utils/voice';
@@ -47,52 +49,68 @@ export default function GamesHub() {
 
   const allGames = [
     {
-      id: 'name_face',
-      title: 'Name & Face (नाम और चेहरा)',
-      desc: 'Recognize your family members and remember relationships.',
+      id: 'memory_match',
+      title: t('games.remember_objects_title', 'Memory Match (वस्तुएं याद रखें)'),
+      desc: t('games.remember_objects_desc', 'Memorize objects shown and identify them'),
+      icon: Eye,
+      path: '/games/memory-match',
+      color: 'bg-teal-50 border-teal-200 text-teal-700',
+    },
+    {
+      id: 'memory_lane',
+      title: t('games.name_face_title', 'Memory Lane (परिवार की यादें)'),
+      desc: t('games.name_face_desc', 'Recognize beloved family members and photographs'),
       icon: Users,
-      path: '/games/name-face',
-      color: 'bg-indigo-50 border-indigo-200 text-indigo-700',
+      path: '/games/memory-lane',
+      color: 'bg-rose-50 border-rose-200 text-rose-700',
     },
     {
-      id: 'whose_voice',
-      title: 'Whose Voice (किसकी आवाज़)',
-      desc: 'Listen to a voice greeting and match it with their picture.',
-      icon: Mic,
-      path: '/games/whose-voice',
-      color: 'bg-purple-50 border-purple-200 text-purple-700',
-    },
-    {
-      id: 'picture_matching',
-      title: 'North East Memory Cards (चित्र मिलान)',
-      desc: 'Match traditional items like Rhinos, Tea Leaves, and Gamusa.',
+      id: 'find_pair',
+      title: t('games.picture_match_title', 'Find the Pair (जोड़े ढूंढें)'),
+      desc: t('games.picture_match_desc', 'Match pairs of traditional cultural cards'),
       icon: Grid,
-      path: '/games/picture-matching',
+      path: '/games/find-pair',
       color: 'bg-emerald-50 border-emerald-200 text-emerald-700',
     },
     {
-      id: 'pattern_game',
-      title: 'Gentle Notes Pattern (सुरों का क्रम)',
-      desc: 'Listen to soft harmonic notes and repeat the colored sequence.',
-      icon: Music,
-      path: '/games/pattern',
-      color: 'bg-blue-50 border-blue-200 text-blue-700',
-    },
-    {
       id: 'daily_routine',
-      title: 'Daily Routine Recall (दिनचर्या)',
-      desc: 'Order your day: morning tea, medicines, walk, and meals.',
+      title: t('games.routine_recall_title', 'Daily Routine (दैनिक दिनचर्या)'),
+      desc: t('games.routine_recall_desc', 'Order your day: morning tea, medicines, walk, meals'),
       icon: Clock,
       path: '/games/daily-routine',
       color: 'bg-amber-50 border-amber-200 text-amber-700',
     },
     {
-      id: 'voice_fluency',
-      title: 'Word Fluency (शब्द धारा)',
-      desc: 'Name familiar fruits, vegetables, or animals at your own pace.',
-      icon: MessageSquare,
-      path: '/games/voice-fluency',
-      color: 'bg-rose-50 border-rose-200 text-rose-700',
+      id: 'word_wizard',
+      title: t('games.find_object_title', 'Word Wizard (शब्द पहचान)'),
+      desc: t('games.find_object_desc', 'Spot and identify everyday familiar objects'),
+      icon: Search,
+      path: '/games/word-wizard',
+      color: 'bg-violet-50 border-violet-200 text-violet-700',
+    },
+    {
+      id: 'sort_it_out',
+      title: t('games.sort_it_out_title', 'Sort It Out (वर्गीकरण)'),
+      desc: t('games.sort_it_out_desc', 'Group fruits, vegetables, animals and household objects'),
+      icon: Sparkles,
+      path: '/games/sort-it-out',
+      color: 'bg-indigo-50 border-indigo-200 text-indigo-700',
+    },
+    {
+      id: 'music_memories',
+      title: t('games.whose_voice_title', 'Music Memories (संगीत और स्वर)'),
+      desc: t('games.whose_voice_desc', 'Recognize cultural melodies and loving family voices'),
+      icon: Music,
+      path: '/games/music-memories',
+      color: 'bg-purple-50 border-purple-200 text-purple-700',
+    },
+    {
+      id: 'puzzle_time',
+      title: t('games.pattern_game_title', 'Puzzle Time (तस्वीर पहेली)'),
+      desc: t('games.pattern_game_desc', 'Complete visual tile puzzles with large friendly pieces'),
+      icon: Grid,
+      path: '/games/puzzle-time',
+      color: 'bg-blue-50 border-blue-200 text-blue-700',
     },
   ];
 
@@ -103,10 +121,10 @@ export default function GamesHub() {
         <div>
           <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
             <Brain className="w-8 h-8 text-indigo-600" />
-            Cognitive Practice (स्मृति अभ्यास)
+            {t('games.title', 'Brain Practice Games')}
           </h1>
           <p className="text-slate-500 font-medium text-sm mt-1">
-            Gentle memory stimulation adapted dynamically to your comfort level.
+            {t('games.encouragement', 'Gentle memory stimulation adapted dynamically to your comfort level.')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -130,7 +148,7 @@ export default function GamesHub() {
       <div className="mb-10 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-3xl p-6 text-white shadow-xl">
         <div className="flex items-center gap-2 mb-3">
           <Star className="w-5 h-5 text-amber-300 fill-amber-300 animate-pulse" />
-          <h2 className="text-xl font-black">Today's 3 Exercises (आज के अभ्यास)</h2>
+          <h2 className="text-xl font-black">{t('games.today_exercise', "Today's Brain Exercise")}</h2>
         </div>
         <p className="text-indigo-100 text-xs mb-6 max-w-lg">
           Curated by our adaptive AI to support cognitive vitality without fatigue.

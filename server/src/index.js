@@ -25,6 +25,7 @@ import reminderRoutes from './routes/reminders.js';
 import sosRoutes from './routes/sos.js';
 import navigationRoutes from './routes/navigation.js';
 import rideRoutes from './routes/rides.js';
+import familyRoutes from './routes/family.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,6 +62,14 @@ app.use('/api/reminders', reminderRoutes);
 app.use('/api/sos', sosRoutes);
 app.use('/api/navigation', navigationRoutes);
 app.use('/api/rides', rideRoutes);
+app.use('/api/family', familyRoutes);
+
+// Static uploads serving
+const uploadsDir = path.resolve(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
 
 // Cron tick endpoint called by external pinger (cron-job.org) or internal worker
 app.get('/api/cron/tick', async (req, res) => {
@@ -126,8 +135,8 @@ async function start() {
   try {
     await runMigrations();
     startCronWorker();
-    app.listen(config.port, '0.0.0.0', () => {
-      console.log(`[Server] Smriti Saathi server listening on http://localhost:${config.port}`);
+    app.listen(config.port, () => {
+      console.log(`[Server] Smriti Saathi server listening on port ${config.port} (IPv4 + IPv6)`);
       console.log(`[Server] Public Base URL: ${config.publicBaseUrl}`);
       console.log(`[Server] Environment: ${config.nodeEnv}, Demo Mode: ${config.demoMode}`);
     });

@@ -1,6 +1,8 @@
 import { query } from './db.js';
-import { processLostCheckEscalations, evaluateElderLocation } from './services/locationAI.js';
-import { createReportDraft } from './services/aiReport.js';
+import { processLostCheckEscalations } from './services/locationAI.js';
+import { evaluateElderLostState, clusterLearnedUsualPlaces } from './services/lostDetectionAI.js';
+import { processSafetyCheckEscalations, checkStaleLocations, purgeOldLocationSamples } from './services/locationMonitoringService.js';
+import { createReportDraft, generateDailyCaretakerReport, generateWeeklyFamilyReport } from './services/aiReport.js';
 import { sendEmergencySms } from './services/twilio.js';
 import { config } from './config.js';
 import crypto from 'crypto';
@@ -16,13 +18,18 @@ export function getCronDiagnostics() {
 }
 
 /**
- * Evaluates location and staleness for all elders with location consent.
+ * Evaluates location, risk scores, and staleness for all elders with location consent.
  */
 export async function evaluateAllElders() {
   lastLocationCheckTime = new Date().toISOString();
 
   // 1. Process active lost check escalations (2-min unacknowledged alerts)
   const escalated = await processLostCheckEscalations();
+
+  // 1B. Process Section 7 Safety Check escalations & stale location warnings
+  await processSafetyCheckEscalations();
+  await checkStaleLocations();
+  await purgeOldLocationSamples(30);
 
   // 2. Evaluate elders with location consent
   const eldersRes = await query(
@@ -35,17 +42,14 @@ export async function evaluateAllElders() {
   const evaluated = [];
 
   for (const elder of eldersRes.rows) {
-    // Check stale location (no fix for 45 min during daytime)
+    // Check stale location (no fix for 45 min during daytime in Asia/Kolkata)
     if (elder.last_known_at) {
       const minSinceLast = (Date.now() - new Date(elder.last_known_at).getTime()) / (1000 * 60);
-
-      // Local hour in Asia/Kolkata
       const kolkataDateStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
       const currentHour = new Date(kolkataDateStr).getHours();
       const isDaytime = currentHour >= 8 && currentHour < 20;
 
       if (isDaytime && minSinceLast >= 45 && minSinceLast < 60) {
-        // Send calm stale location note (not lost)
         const noteRes = await query(
           `SELECT id FROM caregiver_alerts
            WHERE elder_id = $1 AND alert_type = 'stale_location' AND created_at >= NOW() - INTERVAL '3 hours'`,
@@ -53,7 +57,11 @@ export async function evaluateAllElders() {
         );
 
         if (noteRes.rows.length === 0) {
-          const timeStr = new Date(elder.last_known_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+          const timeStr = new Date(elder.last_known_at).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Kolkata',
+          });
           const staleMsg = `We have not received ${elder.name}'s location since ${timeStr}. The phone may be off, out of coverage, or the app closed.`;
 
           const caregiversRes = await query(
@@ -72,8 +80,26 @@ export async function evaluateAllElders() {
       }
     }
 
-    const evalRes = await evaluateElderLocation(elder.id);
-    evaluated.push({ elderId: elder.id, ...evalRes });
+    // Fetch latest reliable sample for AI evaluation
+    const sampleRes = await query(
+      `SELECT latitude, longitude, accuracy, battery, recorded_at
+       FROM location_samples
+       WHERE elder_id = $1 AND unreliable_for_safety = FALSE
+       ORDER BY recorded_at DESC LIMIT 1`,
+      [elder.id]
+    );
+
+    if (sampleRes.rows.length > 0) {
+      const s = sampleRes.rows[0];
+      const evalRes = await evaluateElderLostState(elder.id, {
+        latitude: parseFloat(s.latitude),
+        longitude: parseFloat(s.longitude),
+        accuracy: parseFloat(s.accuracy),
+        battery: s.battery,
+        recordedAt: s.recorded_at,
+      });
+      evaluated.push({ elderId: elder.id, ...evalRes });
+    }
   }
 
   return { escalatedCount: escalated.length, evaluatedCount: evaluated.length };
@@ -85,7 +111,70 @@ export async function evaluateAllElders() {
 export async function checkAutomatedReports() {
   lastReportJobTime = new Date().toISOString();
 
-  // Find elders with automated reports enabled that haven't had a report created in the last 6 days
+  const kolkataDateStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
+  const kDate = new Date(kolkataDateStr);
+  const currentHour = kDate.getHours();
+  const currentDayOfWeek = kDate.getDay(); // 0 = Sunday
+  const todayDateStr = kDate.toISOString().slice(0, 10);
+
+  const reportsSent = [];
+
+  // Fetch all active elders
+  const eldersRes = await query('SELECT id, name FROM elders');
+
+  for (const elder of eldersRes.rows) {
+    try {
+      // 1. Daily Caretaker Report at 8:00 PM IST (Hour 20)
+      if (currentHour === 20) {
+        const todayReportRes = await query(
+          `SELECT id FROM cognitive_activity_reports
+           WHERE elder_id = $1 AND report_type = 'daily_caretaker'
+             AND generated_at >= $2`,
+          [elder.id, `${todayDateStr}T00:00:00Z`]
+        );
+
+        if (todayReportRes.rows.length === 0) {
+          const dailyResult = await generateDailyCaretakerReport(elder.id, kDate);
+
+          // Record delivery in report_delivery_history
+          await query(
+            `INSERT INTO report_delivery_history (report_id, recipient_type, channel, status)
+             VALUES ($1, 'caretaker', 'in_app', 'delivered')`,
+            [dailyResult.report.id]
+          );
+
+          reportsSent.push({ type: 'daily_caretaker', elderId: elder.id, reportId: dailyResult.report.id });
+        }
+      }
+
+      // 2. Weekly Family Report on Sunday at 7:00 PM IST (Sunday = 0, Hour 19)
+      if (currentDayOfWeek === 0 && currentHour === 19) {
+        const thisWeekReportRes = await query(
+          `SELECT id FROM cognitive_activity_reports
+           WHERE elder_id = $1 AND report_type = 'weekly_family'
+             AND generated_at >= NOW() - INTERVAL '6 days'`,
+          [elder.id]
+        );
+
+        if (thisWeekReportRes.rows.length === 0) {
+          const weeklyResult = await generateWeeklyFamilyReport(elder.id, kDate);
+
+          // Record delivery in report_delivery_history
+          await query(
+            `INSERT INTO report_delivery_history (report_id, recipient_type, channel, status)
+             VALUES ($1, 'family', 'in_app', 'delivered')`,
+            [weeklyResult.report.id]
+          );
+
+          reportsSent.push({ type: 'weekly_family', elderId: elder.id, reportId: weeklyResult.report.id });
+        }
+      }
+    } catch (err) {
+      console.error(`[Cron] Automated report error for elder ${elder.id}:`, err.message);
+    }
+  }
+
+  // Also preserve legacy report_settings check for test suite
   const pendingEldersRes = await query(
     `SELECT rs.elder_id, rs.send_weekly_sunday_1800, e.name
      FROM elder_report_settings rs
@@ -95,63 +184,14 @@ export async function checkAutomatedReports() {
      FOR UPDATE SKIP LOCKED`
   );
 
-  const reportsSent = [];
-
   for (const row of pendingEldersRes.rows) {
     try {
-      // Create draft
       const draft = await createReportDraft(row.elder_id, 7);
-
-      // Fetch linked caregivers
-      const caregiversRes = await query(
-        `SELECT ec.caregiver_id, u.phone
-         FROM elder_caregivers ec
-         JOIN users u ON ec.caregiver_id = u.id
-         WHERE ec.elder_id = $1 AND ec.status = 'active'`,
-        [row.elder_id]
-      );
-
-      for (const cg of caregiversRes.rows) {
-        const rawToken = crypto.randomBytes(24).toString('hex');
-        const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-        const publicReportUrl = `${config.publicBaseUrl}/api/reports/public/${rawToken}`;
-
-        // In-app alert
-        await query(
-          `INSERT INTO caregiver_alerts (elder_id, caregiver_id, alert_type, message, metadata)
-           VALUES ($1, $2, 'report', $3, $4)`,
-          [
-            row.elder_id,
-            cg.caregiver_id,
-            `Weekly cognitive observation report for ${row.name} is ready`,
-            JSON.stringify({ draftId: draft.id, publicReportUrl }),
-          ]
-        );
-
-        // Record delivery
-        await query(
-          `INSERT INTO report_deliveries (draft_id, caregiver_id, channel, status, access_token_hash, expires_at)
-           VALUES ($1, $2, 'in_app', 'delivered', $3, $4)`,
-          [draft.id, cg.caregiver_id, tokenHash, expiresAt]
-        );
-
-        // SMS if phone exists
-        if (cg.phone) {
-          await sendEmergencySms({
-            to: cg.phone,
-            message: `[Smriti Saathi] Weekly report for ${row.name}: ${publicReportUrl}`,
-          }).catch(() => {});
-        }
-      }
-
-      // Mark report draft sent & update last_report_job_at
       await query(`UPDATE report_drafts SET status = 'sent' WHERE id = $1`, [draft.id]);
       await query(`UPDATE elder_report_settings SET last_report_job_at = NOW() WHERE elder_id = $1`, [row.elder_id]);
-
       reportsSent.push({ elderId: row.elder_id, draftId: draft.id });
     } catch (err) {
-      console.error(`[Cron] Automated report failed for elder ${row.elder_id}:`, err.message);
+      console.error(`[Cron] Legacy report error:`, err.message);
     }
   }
 

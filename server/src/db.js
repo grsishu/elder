@@ -1,6 +1,8 @@
 import pg from 'pg';
+import sqlite3 from 'sqlite3';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
 
@@ -8,23 +10,244 @@ const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const pool = new Pool({
-  connectionString: config.databaseUrl,
-  ssl: config.databaseUrl.includes('neon.tech') ? { rejectUnauthorized: false } : false,
-});
+let isSqlite = process.env.USE_SQLITE === 'true' || config.databaseUrl.startsWith('sqlite:');
+let pgPool = null;
+let sqliteDb = null;
+let dbInitialized = false;
 
-export async function query(text, params) {
-  const start = Date.now();
-  const res = await pool.query(text, params);
-  const duration = Date.now() - start;
-  if (config.nodeEnv === 'development' && duration > 500) {
-    console.warn(`Slow query (${duration}ms):`, text.substring(0, 100));
-  }
-  return res;
+// Ensure server/data directory exists for persistent SQLite database
+const dataDir = path.resolve(__dirname, '../data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const sqlitePath = process.env.SQLITE_PATH || path.join(dataDir, 'elder.db');
+
+export function getDatabaseType() {
+  return isSqlite ? 'sqlite' : 'postgresql';
 }
 
+export function initSqliteDb() {
+  if (sqliteDb) return sqliteDb;
+  sqliteDb = new sqlite3.Database(sqlitePath);
+  sqliteDb.configure('busyTimeout', 5000);
+  isSqlite = true;
+  return sqliteDb;
+}
+
+export async function initDb() {
+  if (dbInitialized) return;
+
+  if (!isSqlite) {
+    try {
+      pgPool = new Pool({
+        connectionString: config.databaseUrl,
+        ssl: config.databaseUrl.includes('neon.tech') ? { rejectUnauthorized: false } : false,
+        connectionTimeoutMillis: 3000,
+      });
+
+      // Quick test query to verify Postgres connectivity
+      const testClient = await pgPool.connect();
+      testClient.release();
+      console.log('[DB] Connected to PostgreSQL successfully.');
+    } catch (err) {
+      console.warn(`[DB] PostgreSQL connection failed (${err.message}). Falling back to SQLite (${sqlitePath})...`);
+      isSqlite = true;
+      if (pgPool) {
+        try { await pgPool.end(); } catch { /* ignore */ }
+        pgPool = null;
+      }
+      initSqliteDb();
+    }
+  } else {
+    initSqliteDb();
+    console.log(`[DB] Running on SQLite (${sqlitePath})`);
+  }
+
+  dbInitialized = true;
+}
+
+function translateSqlForSqlite(sql) {
+  let s = sql;
+
+  // 1. Strip extensions & type casts
+  s = s.replace(/CREATE EXTENSION[^\n;]+;/gi, '');
+  s = s.replace(/::[a-zA-Z_]+/g, '');
+
+  // 2. Data types
+  s = s.replace(/\bUUID\b/gi, 'TEXT');
+  s = s.replace(/\bTIMESTAMP WITH TIME ZONE\b/gi, 'TEXT');
+  s = s.replace(/\bTIMESTAMP\b/gi, 'TEXT');
+  s = s.replace(/\bJSONB\b/gi, 'TEXT');
+  s = s.replace(/\bBYTEA\b/gi, 'BLOB');
+  s = s.replace(/\bNUMERIC\([^)]+\)/gi, 'REAL');
+  s = s.replace(/gen_random_uuid\(\)/gi, "(lower(hex(randomblob(16))))");
+
+  // 3. Current time / intervals
+  s = s.replace(/\bDEFAULT\s+NOW\(\)/gi, "DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))");
+  s = s.replace(/\bDEFAULT\s+CURRENT_TIMESTAMP\b/gi, "DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))");
+  s = s.replace(/\bNOW\(\)\s*-\s*INTERVAL\s*'(\d+)\s*seconds?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-$1 seconds')");
+  s = s.replace(/\bNOW\(\)\s*-\s*INTERVAL\s*'(\d+)\s*minutes?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-$1 minutes')");
+  s = s.replace(/\bNOW\(\)\s*-\s*INTERVAL\s*'(\d+)\s*hours?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-$1 hours')");
+  s = s.replace(/\bNOW\(\)\s*-\s*INTERVAL\s*'(\d+)\s*days?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-$1 days')");
+  s = s.replace(/\bNOW\(\)\s*\+\s*INTERVAL\s*'(\d+)\s*days?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+$1 days')");
+  s = s.replace(/\bNOW\(\)/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+  s = s.replace(/CURRENT_DATE/gi, "(date('now'))");
+
+  // 4. Alter table
+  s = s.replace(/\bALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\b/gi, 'ALTER TABLE $1 ADD COLUMN');
+
+  return s;
+}
+
+const booleanColumns = new Set([
+  'unreliable_for_safety', 'verified', 'active', 'share_location', 'share_health', 'share_progress',
+  'routine_drift_enabled', 'auto_lost_enabled', 'can_see_location', 'can_see_progress', 'can_see_health',
+  'can_manage_reminders', 'can_approve_rides', 'is_emergency_contact', 'is_active',
+  'send_weekly_sunday_1800', 'send_monthly', 'alert_caregivers', 'read', 'acknowledged',
+  'night_rule_enabled', 'auto_calls_enabled'
+]);
+
+function normalizeRow(row) {
+  if (!row) return row;
+  const normalized = { ...row };
+  for (const [key, val] of Object.entries(normalized)) {
+    if (booleanColumns.has(key) || /^(is_|can_|has_)|(_enabled|_active)$/.test(key)) {
+      if (val === 1) normalized[key] = true;
+      else if (val === 0) normalized[key] = false;
+    }
+  }
+  return normalized;
+}
+
+function adaptQueryAndParamsForSqlite(text, params = []) {
+  let s = text;
+  const newParams = [];
+
+  // Replace Postgres $1, $2, $3 with SQLite ? and map params correctly even when $1 is repeated
+  s = s.replace(/\$(\d+)/g, (_, numStr) => {
+    const idx = parseInt(numStr, 10) - 1;
+    newParams.push(params[idx]);
+    return '?';
+  });
+
+  // Handle TO_TIMESTAMP(unix_timestamp)
+  s = s.replace(/TO_TIMESTAMP\((\d+)\)/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', $1, 'unixepoch')");
+
+  // Handle chaining of intervals like NOW() - INTERVAL '1 days' - INTERVAL '10 minutes'
+  s = s.replace(/NOW\(\)\s*-\s*INTERVAL\s*'(\d+)\s*days?'\s*-\s*INTERVAL\s*'(\d+)\s*minutes?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-$1 days', '-$2 minutes')");
+
+  // Replace Postgres intervals
+  s = s.replace(/NOW\(\)\s*([+-])\s*INTERVAL\s*'(\d+)\s*seconds?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '$1$2 seconds')");
+  s = s.replace(/NOW\(\)\s*([+-])\s*INTERVAL\s*'(\d+)\s*minutes?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '$1$2 minutes')");
+  s = s.replace(/NOW\(\)\s*([+-])\s*INTERVAL\s*'(\d+)\s*hours?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '$1$2 hours')");
+  s = s.replace(/NOW\(\)\s*([+-])\s*INTERVAL\s*'(\d+)\s*days?'/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '$1$2 days')");
+  s = s.replace(/\bNOW\(\)/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+  s = s.replace(/\bCURRENT_TIMESTAMP\b/gi, "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+  s = s.replace(/version\(\)/gi, "'SQLite 3'");
+
+  // Strip Postgres vendor-specific row locks (FOR UPDATE SKIP LOCKED)
+  s = s.replace(/\s*FOR\s+UPDATE(\s+SKIP\s+LOCKED)?/gi, '');
+
+  // Replace JSON casts
+  s = s.replace(/::[a-zA-Z_]+/g, '');
+
+  return { adaptedSql: s, adaptedParams: newParams.length > 0 ? newParams : params };
+}
+
+export async function query(text, params = []) {
+  if (!dbInitialized) {
+    await initDb();
+  }
+
+  const start = Date.now();
+
+  if (!isSqlite && pgPool) {
+    const res = await pgPool.query(text, params);
+    const duration = Date.now() - start;
+    if (config.nodeEnv === 'development' && duration > 500) {
+      console.warn(`Slow PG query (${duration}ms):`, text.substring(0, 100));
+    }
+    return res;
+  }
+
+  // SQLite execution
+  const db = initSqliteDb();
+  const { adaptedSql, adaptedParams } = adaptQueryAndParamsForSqlite(text, params);
+
+  // Convert params: serialize objects/arrays to JSON strings, dates to ISO strings, booleans to 0/1 if needed
+  const normalizedParams = adaptedParams.map(p => {
+    if (p === undefined) return null;
+    if (p instanceof Date) return p.toISOString();
+    if (typeof p === 'object' && p !== null && !Buffer.isBuffer(p)) {
+      return JSON.stringify(p);
+    }
+    if (typeof p === 'boolean') {
+      return p ? 1 : 0;
+    }
+    return p;
+  });
+
+  return new Promise((resolve, reject) => {
+    const trimmed = adaptedSql.trim();
+    const isSelect = /^\s*(SELECT|PRAGMA|EXPLAIN)\b/i.test(trimmed);
+    const hasReturning = /\bRETURNING\b/i.test(trimmed);
+
+    if (isSelect || hasReturning) {
+      db.all(adaptedSql, normalizedParams, (err, rows) => {
+        if (err) return reject(err);
+        const processedRows = (rows || []).map(normalizeRow);
+        resolve({
+          rows: processedRows,
+          rowCount: processedRows.length,
+        });
+      });
+    } else {
+      db.run(adaptedSql, normalizedParams, function (err) {
+        if (err) return reject(err);
+        resolve({
+          rows: [],
+          rowCount: this.changes,
+          lastID: this.lastID,
+        });
+      });
+    }
+  });
+}
+
+export const pool = {
+  query: (text, params) => query(text, params),
+  connect: async () => {
+    if (!dbInitialized) await initDb();
+    if (!isSqlite && pgPool) {
+      return await pgPool.connect();
+    }
+    return {
+      query: (text, params) => query(text, params),
+      release: () => {},
+    };
+  },
+  get totalCount() {
+    return pgPool ? pgPool.totalCount : 1;
+  },
+  get idleCount() {
+    return pgPool ? pgPool.idleCount : 1;
+  },
+  end: async () => {
+    if (pgPool) await pgPool.end();
+    if (sqliteDb) {
+      await new Promise(r => sqliteDb.close(r));
+      sqliteDb = null;
+    }
+    dbInitialized = false;
+  },
+};
+
 export async function runMigrations() {
-  console.log('[DB] Running database migrations...');
+  if (!dbInitialized) {
+    await initDb();
+  }
+
+  console.log(`[DB] Running database migrations on ${isSqlite ? 'SQLite' : 'PostgreSQL'}...`);
   const migrationsDir = path.resolve(__dirname, '../migrations');
   if (!fs.existsSync(migrationsDir)) {
     console.warn('[DB] Migrations directory not found:', migrationsDir);
@@ -33,21 +256,65 @@ export async function runMigrations() {
 
   const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
 
-  for (const file of files) {
-    const filePath = path.join(migrationsDir, file);
-    const sql = fs.readFileSync(filePath, 'utf8');
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(sql);
-      await client.query('COMMIT');
+  if (isSqlite) {
+    const db = initSqliteDb();
+    for (const file of files) {
+      const filePath = path.join(migrationsDir, file);
+      const rawSql = fs.readFileSync(filePath, 'utf8');
+      const translated = translateSqlForSqlite(rawSql);
+      const statements = translated
+        .split(';')
+        .map(st => st.replace(/^(--[^\n]*\n|\s+)+/, '').trim())
+        .filter(st => st.length > 0);
+
+      for (const stmt of statements) {
+        try {
+          // Debug
+          // console.log('Running:', stmt);
+          await new Promise((resolve, reject) => {
+            db.run(stmt, (err) => {
+              if (err) {
+                // Ignore idempotent errors in SQLite
+                if (
+                  err.message.includes('duplicate column name') ||
+                  err.message.includes('already exists') ||
+                  err.message.includes('UNIQUE constraint failed')
+                ) {
+                  resolve();
+                } else {
+                  reject(err);
+                }
+              } else {
+                resolve();
+              }
+            });
+          });
+        } catch (err) {
+          console.error(`[DB] SQLite migration failed on ${file}:`);
+          console.error(stmt);
+          console.error('Error message:', err.message);
+          throw err;
+        }
+      }
       console.log(`[DB] Successfully applied migration: ${file}`);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      console.error(`[DB] Migration failed on ${file}:`, err.message);
-      throw err;
-    } finally {
-      client.release();
+    }
+  } else {
+    for (const file of files) {
+      const filePath = path.join(migrationsDir, file);
+      const sql = fs.readFileSync(filePath, 'utf8');
+      const client = await pgPool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(sql);
+        await client.query('COMMIT');
+        console.log(`[DB] Successfully applied migration: ${file}`);
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(`[DB] Migration failed on ${file}:`, err.message);
+        throw err;
+      } finally {
+        client.release();
+      }
     }
   }
   console.log('[DB] Migrations completed successfully.');

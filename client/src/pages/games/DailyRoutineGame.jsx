@@ -130,7 +130,7 @@ export default function DailyRoutineGame() {
           onClick={handleVerify}
           className="w-full mt-6 bg-amber-500 hover:bg-amber-600 text-white font-black py-3.5 rounded-2xl shadow-md text-base"
         >
-          Verify Order (क्रम जांचें)
+          {t('games.verify_order', 'Verify Order')}
         </button>
       </div>
     </div>

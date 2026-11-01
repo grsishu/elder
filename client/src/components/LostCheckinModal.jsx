@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Home, CheckCircle2, Volume2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { speak } from '../utils/voice';
+import { getCurrentLocation } from '../utils/location';
 
 export default function LostCheckinModal() {
   const { t } = useTranslation();
@@ -67,10 +68,20 @@ export default function LostCheckinModal() {
   const handleFine = async () => {
     if (!activeCheck) return;
     try {
+      let coords = null;
+      try {
+        coords = await getCurrentLocation();
+      } catch {}
+
       await fetch('/api/location/checkin/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ checkId: activeCheck.id, response: 'fine' }),
+        body: JSON.stringify({
+          checkId: activeCheck.id,
+          response: 'fine',
+          latitude: coords?.latitude,
+          longitude: coords?.longitude,
+        }),
       });
       speak(t('silent_guardian.i_am_fine'));
     } catch {

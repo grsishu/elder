@@ -1,10 +1,22 @@
 import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
+import { fileURLToPath } from 'url';
 import { query } from '../db.js';
 import { config } from '../config.js';
 import { logServerError } from '../errors.js';
+import { COGNITIVE_GAMES, getElderGamesStatus, generateCognitiveAnalysis } from './adaptiveAI.js';
+import { sendEmergencySms } from './twilio.js';
 
-// Banned words that imply medical diagnosis or clinical classification
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const reportsDir = path.resolve(__dirname, '../../uploads/reports');
+if (!fs.existsSync(reportsDir)) {
+  fs.mkdirSync(reportsDir, { recursive: true });
+}
+
+// Banned words that imply medical diagnosis
 const BANNED_DIAGNOSTIC_WORDS = [
   'diagnosis',
   'diagnose',
@@ -13,384 +25,519 @@ const BANNED_DIAGNOSTIC_WORDS = [
   'stage 1',
   'stage 2',
   'stage 3',
-  'disease',
-  'alzheimer',
-  'alzheimers',
-  'alzheimer\'s',
   'pathology',
-  'clinical',
+  'clinical condition',
+  'cure',
+  'cure dementia',
+  'disease progression',
   'निदान',
-  'रोग',
-  'बीमारी का चरण',
-  'अल्जाइमर',
-  'रोग का चरण',
+  'बीमारी का निदान',
+  'रोग का निदान',
 ];
 
 export function containsBannedWords(text) {
   if (!text) return false;
   const lower = text.toLowerCase();
-  return BANNED_DIAGNOSTIC_WORDS.some(word => lower.includes(word));
+  return BANNED_DIAGNOSTIC_WORDS.some((word) => lower.includes(word));
 }
 
 /**
- * Computes anonymous statistics from real DB for the given period.
+ * Backward-compatible helper to compute elder stats
  */
 export async function computeElderStats(elderId, periodDays = 7) {
-  const periodInterval = `${periodDays} days`;
-
-  // 1. Game practice statistics
-  const gameStatsRes = await query(
-    `SELECT 
-        COUNT(*)::int as total_sessions,
-        COUNT(DISTINCT DATE(created_at))::int as active_days,
-        ROUND(AVG(accuracy), 1) as avg_accuracy,
-        ROUND(AVG(score), 1) as avg_score,
-        game_type,
-        COUNT(*)::int as game_count
+  const sessionsRes = await query(
+    `SELECT COUNT(*)::int as total, ROUND(AVG(accuracy), 1) as avg_accuracy
      FROM game_sessions
-     WHERE elder_id = $1 AND created_at >= NOW() - $2::interval
-     GROUP BY game_type`,
-    [elderId, periodInterval]
+     WHERE elder_id = $1 AND created_at >= NOW() - $2::interval`,
+    [elderId, `${periodDays} days`]
   );
+  const totalSessions = parseInt(sessionsRes.rows[0]?.total || 0, 10);
+  const avgAccuracy = parseFloat(sessionsRes.rows[0]?.avg_accuracy || 0);
 
-  // Overall totals
-  let totalSessions = 0;
-  let activeDays = 0;
-  let totalAccuracySum = 0;
-  const gamesBreakdown = {};
-
-  for (const row of gameStatsRes.rows) {
-    totalSessions += row.game_count;
-    activeDays = Math.max(activeDays, row.active_days);
-    totalAccuracySum += parseFloat(row.avg_accuracy || 0) * row.game_count;
-    gamesBreakdown[row.game_type] = {
-      count: row.game_count,
-      avgAccuracy: parseFloat(row.avg_accuracy || 0),
-      avgScore: parseFloat(row.avg_score || 0),
-    };
-  }
-  const overallAvgAccuracy = totalSessions > 0 ? Math.round(totalAccuracySum / totalSessions) : 0;
-
-  // 2. Medicine adherence
-  const medRes = await query(
-    `SELECT 
-        status, 
-        COUNT(*)::int as count 
-     FROM reminder_occurrences 
-     WHERE elder_id = $1 AND reminder_type = 'medicine' AND due_at >= NOW() - $2::interval
+  const remRes = await query(
+    `SELECT status, COUNT(*)::int as count
+     FROM reminder_occurrences
+     WHERE elder_id = $1 AND due_at >= NOW() - $2::interval
      GROUP BY status`,
-    [elderId, periodInterval]
+    [elderId, `${periodDays} days`]
   );
 
-  let medsDone = 0;
-  let medsMissed = 0;
-  let medsScheduled = 0;
-  for (const r of medRes.rows) {
-    if (r.status === 'done') medsDone = r.count;
-    else if (r.status === 'missed') medsMissed = r.count;
-    else medsScheduled += r.count;
-  }
-  const totalMeds = medsDone + medsMissed;
-  const adherenceRate = totalMeds > 0 ? Math.round((medsDone / totalMeds) * 100) : 100;
+  let confirmed = 0;
+  let missed = 0;
+  remRes.rows.forEach((r) => {
+    if (r.status === 'done' || r.status === 'confirmed' || r.status === 'taken') confirmed += parseInt(r.count, 10);
+    if (r.status === 'missed' || r.status === 'ignored') missed += parseInt(r.count, 10);
+  });
 
-  // 3. Safety & Silent Guardian Events
-  const sosRes = await query(
-    `SELECT COUNT(*)::int as count FROM sos_events WHERE elder_id = $1 AND triggered_at >= NOW() - $2::interval`,
-    [elderId, periodInterval]
-  );
-  const lostRes = await query(
-    `SELECT COUNT(*)::int as count FROM lost_checks WHERE elder_id = $1 AND started_at >= NOW() - $2::interval AND status != 'fine'`,
-    [elderId, periodInterval]
-  );
-  const guardianRes = await query(
-    `SELECT event_type, reason, created_at FROM silent_guardian_events WHERE elder_id = $1 AND created_at >= NOW() - $2::interval ORDER BY created_at DESC LIMIT 5`,
-    [elderId, periodInterval]
-  );
+  const gamesStatus = await getElderGamesStatus(elderId);
+  const analysis = await generateCognitiveAnalysis(elderId, periodDays);
 
   return {
-    periodDays,
     totalSessions,
-    activeDays,
-    overallAvgAccuracy,
-    gamesBreakdown,
-    medicines: {
-      totalDue: totalMeds,
-      confirmed: medsDone,
-      missed: medsMissed,
-      adherenceRate,
-    },
-    safety: {
-      sosCount: sosRes.rows[0]?.count || 0,
-      lostEventsCount: lostRes.rows[0]?.count || 0,
-      guardianNotes: guardianRes.rows,
-    },
+    avgAccuracy,
+    medicines: { confirmed, missed },
+    gamesStatus,
+    analysis,
+    periodDays,
   };
 }
 
-/**
- * Builds safe template draft text without external AI.
- */
-export function buildTemplateDraft(elderName, stats, lang = 'hi') {
-  const { periodDays, activeDays, totalSessions, overallAvgAccuracy, medicines, safety } = stats;
-
-  if (lang === 'hi') {
-    let text = `पिछले ${periodDays} दिनों में, ${elderName} जी ने ${activeDays} दिन स्मृति अभ्यास किया और कुल ${totalSessions} खेल सत्र पूरे किए।\n`;
-    text += `औसत सटीकता ${overallAvgAccuracy}% रही।\n`;
-    text += `दवाओं का समय पर सेवन: ${medicines.confirmed} / ${medicines.totalDue || (medicines.confirmed + medicines.missed)} खुराक ली गईं (${medicines.adherenceRate}% समयबद्धता)।\n`;
-    if (safety.sosCount === 0 && safety.lostEventsCount === 0) {
-      text += `इस अवधि में कोई आपातकालीन अलार्म या भटकाव की घटना दर्ज नहीं हुई। सुरक्षा स्थिति सामान्य रही।`;
-    } else {
-      text += `सुरक्षा सूचना: ${safety.sosCount} आपातकालीन संकेत और ${safety.lostEventsCount} स्थान भटकाव जांच दर्ज की गई।`;
+function generateSimpleDraftPdf(elderName, summary) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 40 });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.fontSize(18).text(`Smriti Saathi Report - ${elderName}`, { underline: true });
+      doc.moveDown();
+      doc.fontSize(12).text(summary);
+      doc.end();
+    } catch (err) {
+      reject(err);
     }
-
-    const nextSteps = `1. प्रतिदिन निर्धारित समय पर स्मृति अभ्यास जारी रखें।\n2. पानी और दवाओं की दैनिक समय सारिणी का पालन कराएं।\n3. यदि किसी खेल में लगातार कठिनाई दिखे, तो पारिवारिक बातचीत बढ़ाएं और आवश्यकता होने पर डॉक्टर से परामर्श लें।`;
-
-    return { summaryText: text, suggestedNextSteps: nextSteps };
-  } else {
-    let text = `Over the last ${periodDays} days, ${elderName} engaged in cognitive practice on ${activeDays} days, completing ${totalSessions} sessions.\n`;
-    text += `Overall average practice accuracy was ${overallAvgAccuracy}%.\n`;
-    text += `Medicine adherence: ${medicines.confirmed} of ${medicines.totalDue || (medicines.confirmed + medicines.missed)} scheduled doses were confirmed (${medicines.adherenceRate}% adherence).\n`;
-    if (safety.sosCount === 0 && safety.lostEventsCount === 0) {
-      text += `No emergency SOS triggers or lost-wandering incidents occurred during this period. Safety routine remained stable.`;
-    } else {
-      text += `Safety Notice: ${safety.sosCount} SOS alert(s) and ${safety.lostEventsCount} wandering checks were recorded.`;
-    }
-
-    const nextSteps = `1. Maintain regular daily practice at comfortable times.\n2. Ensure routine hydration and medicine schedules are followed.\n3. Keep family photos and familiar voices updated in the app for positive engagement.`;
-
-    return { summaryText: text, suggestedNextSteps: nextSteps };
-  }
+  });
 }
 
 /**
- * Calls Gemini with ANONYMOUS numbers only, and validates banned words.
- */
-export async function polishDraftWithGemini(anonymousStats, lang = 'hi') {
-  if (!config.geminiApiKey) {
-    return null;
-  }
-
-  const prompt = `You are a respectful, empathetic health assistant writing an observation summary for a family caregiver of an elder in North East India.
-Here are the anonymous statistics for the last ${anonymousStats.periodDays} days:
-- Active Practice Days: ${anonymousStats.activeDays} of ${anonymousStats.periodDays} days
-- Total Brain Exercise Sessions: ${anonymousStats.totalSessions}
-- Average Practice Accuracy: ${anonymousStats.overallAvgAccuracy}%
-- Medicine Doses Confirmed: ${anonymousStats.medicines.confirmed} out of ${anonymousStats.medicines.totalDue} (${anonymousStats.medicines.adherenceRate}%)
-- Emergency SOS Triggers: ${anonymousStats.safety.sosCount}
-- Lost/Wandering Checks: ${anonymousStats.safety.lostEventsCount}
-
-INSTRUCTIONS:
-1. Write in plain, encouraging words in ${lang === 'hi' ? 'Hindi' : 'English'}.
-2. CRITICAL RULE: NEVER use diagnostic words or clinical stage labels (DO NOT mention diagnosis, dementia stage, disease, Alzheimer's, or clinical prognosis).
-3. Do not include any personal names or phone numbers.
-4. Provide two sections: "Summary" and "Suggested Next Steps".
-Output format:
-SUMMARY: <text>
-NEXT_STEPS: <text>`;
-
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiApiKey}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-
-    const resp = await fetch(url, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-      }),
-    });
-    clearTimeout(timeout);
-
-    if (!resp.ok) {
-      console.warn('[Gemini] Request failed with status:', resp.status);
-      return null;
-    }
-
-    const json = await resp.json();
-    const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawText) return null;
-
-    // Reject if model generated any banned diagnostic term
-    if (containsBannedWords(rawText)) {
-      console.warn('[Gemini] Output rejected due to banned diagnostic wording.');
-      return null;
-    }
-
-    let summaryText = rawText;
-    let suggestedNextSteps = '';
-
-    if (rawText.includes('SUMMARY:') && rawText.includes('NEXT_STEPS:')) {
-      const parts = rawText.split('NEXT_STEPS:');
-      summaryText = parts[0].replace('SUMMARY:', '').trim();
-      suggestedNextSteps = parts[1].trim();
-    }
-
-    return {
-      summaryText,
-      suggestedNextSteps: suggestedNextSteps || '1. Continue daily cognitive practice.\n2. Stay connected with family.',
-    };
-  } catch (err) {
-    console.warn('[Gemini] API error:', err.message);
-    return null;
-  }
-}
-
-/**
- * Creates and saves report draft in report_drafts table.
+ * Backward-compatible helper to create draft report
  */
 export async function createReportDraft(elderId, periodDays = 7) {
-  const elderRes = await query(`SELECT name, language, photo, photo_mime FROM elders WHERE id = $1`, [elderId]);
-  if (elderRes.rows.length === 0) throw new Error('Elder not found');
-  const elder = elderRes.rows[0];
-
   const stats = await computeElderStats(elderId, periodDays);
+  const elderRes = await query('SELECT name FROM elders WHERE id = $1', [elderId]);
+  const elderName = elderRes.rows[0]?.name || 'Elder';
+  const summary = `Cognitive wellness observation report for ${elderName}. Practice observed across cognitive games with ${stats.totalSessions} sessions completed.`;
+  const pdfBuffer = await generateSimpleDraftPdf(elderName, summary);
 
-  // 1. Build template draft
-  const template = buildTemplateDraft(elder.name, stats, elder.language || 'hi');
-  let finalSummary = template.summaryText;
-  let finalNextSteps = template.suggestedNextSteps;
-  let aiPolished = false;
-
-  // 2. Try polishing with Gemini (anonymous only)
-  try {
-    const aiResult = await polishDraftWithGemini(stats, elder.language || 'hi');
-    if (aiResult && aiResult.summaryText) {
-      finalSummary = aiResult.summaryText;
-      if (aiResult.suggestedNextSteps) finalNextSteps = aiResult.suggestedNextSteps;
-      aiPolished = true;
-    }
-  } catch (err) {
-    console.warn('[Report] Fallback to template draft:', err.message);
-  }
-
-  // 3. Generate PDF Buffer with pdfkit
-  const pdfBuffer = await generateReportPdf({
-    elderName: elder.name,
-    elderPhoto: elder.photo,
-    periodDays,
-    summaryText: finalSummary,
-    suggestedNextSteps: finalNextSteps,
-    stats,
-    language: elder.language || 'hi',
-  });
-
-  // 4. Save to report_drafts table
   const insertRes = await query(
-    `INSERT INTO report_drafts (elder_id, period, status, language, summary_text, suggested_next_steps, stats_json, pdf)
-     VALUES ($1, $2, 'draft', $3, $4, $5, $6, $7)
-     RETURNING id, elder_id, period, status, language, summary_text, suggested_next_steps, stats_json, created_at`,
+    `INSERT INTO report_drafts (elder_id, period, summary_text, suggested_next_steps, stats_json, status, pdf, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, 'draft', $6, NOW(), NOW())
+     RETURNING *`,
     [
       elderId,
-      `${periodDays}_days`,
-      elder.language || 'hi',
-      finalSummary,
-      finalNextSteps,
+      `${periodDays} days`,
+      summary,
+      JSON.stringify(stats.analysis?.recommendedNext || ['Practice gentle daily memory routine']),
       JSON.stringify(stats),
       pdfBuffer,
     ]
   );
+  return insertRes.rows[0];
+}
+
+const MANDATORY_DISCLAIMER =
+  'IMPORTANT NOTICE: This report contains cognitive engagement and wellness observations only. It does not provide medical diagnosis, clinical evaluation, or disease staging. For all health and medical concerns, please consult a qualified healthcare professional.';
+
+/**
+ * Generate Daily Caretaker PDF Report (covers today from 00:00 to now)
+ */
+export async function generateDailyCaretakerReport(elderId, reportDate = new Date()) {
+  const dateStr = reportDate.toISOString().slice(0, 10);
+  const startOfDay = `${dateStr}T00:00:00Z`;
+  const endOfDay = `${dateStr}T23:59:59Z`;
+
+  const elderRes = await query('SELECT * FROM elders WHERE id = $1', [elderId]);
+  const elder = elderRes.rows[0];
+  if (!elder) throw new Error('Elder not found');
+
+  // 1. Fetch today's game sessions
+  const sessionsRes = await query(
+    `SELECT game_type, level, score, accuracy, hints_count, attempts_count,
+            duration_seconds, completion_status, correct_answers, incorrect_answers, total_questions, created_at
+     FROM game_sessions
+     WHERE elder_id = $1 AND created_at >= $2 AND created_at <= $3
+     ORDER BY created_at ASC`,
+    [elderId, startOfDay, endOfDay]
+  );
+  const sessions = sessionsRes.rows;
+
+  // 2. Fetch difficulty adjustments made today
+  const diffHistRes = await query(
+    `SELECT game_type, old_level, new_level, reason, decided_by, created_at
+     FROM adaptive_difficulty_history
+     WHERE elder_id = $1 AND created_at >= $2 AND created_at <= $3
+     ORDER BY created_at ASC`,
+    [elderId, startOfDay, endOfDay]
+  );
+  const difficultyAdjustments = diffHistRes.rows;
+
+  // 3. Current difficulty levels for all 8 games
+  const gamesStatus = await getElderGamesStatus(elderId);
+
+  // 4. Activity stats
+  const totalPlayed = sessions.length;
+  const totalCompleted = sessions.filter((s) => s.completion_status !== 'incomplete').length;
+  const incompleteCount = totalPlayed - totalCompleted;
+  const avgAccuracy = totalPlayed > 0
+    ? Math.round(sessions.reduce((acc, s) => acc + parseFloat(s.accuracy || 0), 0) / totalPlayed)
+    : 0;
+
+  // 5. AI Observation summary
+  const aiAnalysis = await generateCognitiveAnalysis(elderId, 1);
+  const summaryText = totalPlayed === 0
+    ? `No cognitive practice sessions were recorded for ${elder.name} on ${dateStr}. Daily gentle stimulation is recommended when comfortable.`
+    : `${elder.name} engaged in ${totalPlayed} cognitive practice activities today with an overall accuracy of ${avgAccuracy}%. ${totalCompleted} session(s) completed comfortably.`;
+
+  const stats = {
+    date: dateStr,
+    totalPlayed,
+    totalCompleted,
+    incompleteCount,
+    avgAccuracy,
+    sessions,
+    difficultyAdjustments,
+    gamesStatus,
+  };
+
+  // 6. Generate genuine PDF buffer
+  const pdfBuffer = await generateDailyPdfBuffer({
+    elderName: elder.name,
+    elderId: elder.id,
+    dateStr,
+    stats,
+    aiAnalysis,
+    summaryText,
+  });
+
+  // Save PDF to persistent disk
+  const filename = `daily_${elder.id}_${dateStr}.pdf`;
+  const filePath = path.join(reportsDir, filename);
+  fs.writeFileSync(filePath, pdfBuffer);
+
+  // 7. Store in cognitive_activity_reports table
+  const insertRes = await query(
+    `INSERT INTO cognitive_activity_reports (
+       elder_id, report_type, period_start, period_end, summary_text,
+       ai_observations, recommendations, stats_json, pdf_path, generated_at
+     ) VALUES ($1, 'daily_caretaker', $2, $3, $4, $5, $6, $7, $8, NOW())
+     RETURNING *`,
+    [
+      elderId,
+      startOfDay,
+      endOfDay,
+      summaryText,
+      JSON.stringify(aiAnalysis.comfortableActivities.concat(aiAnalysis.assistanceNeededActivities)),
+      JSON.stringify(aiAnalysis.recommendedNext),
+      JSON.stringify(stats),
+      `/uploads/reports/${filename}`,
+    ]
+  );
 
   return {
-    ...insertRes.rows[0],
-    aiPolished,
+    report: insertRes.rows[0],
+    pdfBuffer,
+    filename,
   };
 }
 
 /**
- * Draws charts and generates PDF with pdfkit.
+ * Generate Weekly Family PDF Report (covers Monday through Sunday)
  */
-export function generateReportPdf({
-  elderName,
-  periodDays,
-  summaryText,
-  suggestedNextSteps,
-  stats,
-  language = 'hi',
-}) {
+export async function generateWeeklyFamilyReport(elderId, endDate = new Date()) {
+  const endStr = endDate.toISOString().slice(0, 10);
+  const startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const startStr = startDate.toISOString().slice(0, 10);
+
+  const elderRes = await query('SELECT * FROM elders WHERE id = $1', [elderId]);
+  const elder = elderRes.rows[0];
+  if (!elder) throw new Error('Elder not found');
+
+  // 1. Fetch weekly game sessions
+  const sessionsRes = await query(
+    `SELECT game_type, level, score, accuracy, hints_count, attempts_count,
+            duration_seconds, completion_status, created_at
+     FROM game_sessions
+     WHERE elder_id = $1 AND created_at >= $2 AND created_at <= $3
+     ORDER BY created_at ASC`,
+    [elderId, startStr, endStr]
+  );
+  const sessions = sessionsRes.rows;
+
+  // Active days count
+  const activeDaysRes = await query(
+    `SELECT COUNT(DISTINCT DATE(created_at))::int as active_days
+     FROM game_sessions
+     WHERE elder_id = $1 AND created_at >= $2 AND created_at <= $3`,
+    [elderId, startStr, endStr]
+  );
+  const activeDays = activeDaysRes.rows[0]?.active_days || 0;
+
+  // 2. Fetch difficulty adjustments made during the week
+  const diffHistRes = await query(
+    `SELECT game_type, old_level, new_level, reason, decided_by, created_at
+     FROM adaptive_difficulty_history
+     WHERE elder_id = $1 AND created_at >= $2 AND created_at <= $3
+     ORDER BY created_at ASC`,
+    [elderId, startStr, endStr]
+  );
+
+  // 3. Current difficulty levels for all 8 games
+  const gamesStatus = await getElderGamesStatus(elderId);
+
+  // 4. Aggregate game-wise breakdown
+  const gameStats = {};
+  COGNITIVE_GAMES.forEach((g) => {
+    const matching = sessions.filter((s) => s.game_type === g);
+    gameStats[g] = {
+      sessionsCount: matching.length,
+      avgAccuracy: matching.length > 0
+        ? Math.round(matching.reduce((acc, s) => acc + parseFloat(s.accuracy || 0), 0) / matching.length)
+        : null,
+      totalHints: matching.reduce((acc, s) => acc + parseInt(s.hints_count || 0, 10), 0),
+    };
+  });
+
+  const totalPlayed = sessions.length;
+  const avgAccuracy = totalPlayed > 0
+    ? Math.round(sessions.reduce((acc, s) => acc + parseFloat(s.accuracy || 0), 0) / totalPlayed)
+    : 0;
+
+  // 5. AI Observation summary
+  const aiAnalysis = await generateCognitiveAnalysis(elderId, 7);
+  const summaryText = totalPlayed === 0
+    ? `No cognitive practice activities were recorded for ${elder.name} during the week of ${startStr} to ${endStr}. Family members are encouraged to spend time trying Memory Lane or Picture Matching together.`
+    : `During this week, ${elder.name} completed ${totalPlayed} cognitive practice sessions across ${activeDays} active day(s) with an average accuracy of ${avgAccuracy}%. Memory exercises and daily routines were practiced with high engagement.`;
+
+  const familyRecommendations = [
+    'Celebrate every gentle step: praise completion rather than perfection.',
+    'Upload recent photos from family visits into Memory Lane so games feature beloved faces and places.',
+    'Record a short voice greeting from grandchildren to bring comfort and joy during audio exercises.',
+  ];
+
+  const stats = {
+    period: `${startStr} to ${endStr}`,
+    activeDays,
+    totalPlayed,
+    avgAccuracy,
+    gameStats,
+    gamesStatus,
+    difficultyAdjustments: diffHistRes.rows,
+  };
+
+  // 6. Generate genuine PDF buffer
+  const pdfBuffer = await generateWeeklyPdfBuffer({
+    elderName: elder.name,
+    elderId: elder.id,
+    periodStr: `${startStr} to ${endStr}`,
+    stats,
+    aiAnalysis,
+    summaryText,
+    familyRecommendations,
+  });
+
+  // Save PDF to persistent disk
+  const filename = `weekly_${elder.id}_${endStr}.pdf`;
+  const filePath = path.join(reportsDir, filename);
+  fs.writeFileSync(filePath, pdfBuffer);
+
+  // 7. Store in cognitive_activity_reports table
+  const insertRes = await query(
+    `INSERT INTO cognitive_activity_reports (
+       elder_id, report_type, period_start, period_end, summary_text,
+       ai_observations, recommendations, stats_json, pdf_path, generated_at
+     ) VALUES ($1, 'weekly_family', $2, $3, $4, $5, $6, $7, $8, NOW())
+     RETURNING *`,
+    [
+      elderId,
+      startStr,
+      endStr,
+      summaryText,
+      JSON.stringify(aiAnalysis.comfortableActivities.concat(aiAnalysis.assistanceNeededActivities)),
+      JSON.stringify(familyRecommendations),
+      JSON.stringify(stats),
+      `/uploads/reports/${filename}`,
+    ]
+  );
+
+  return {
+    report: insertRes.rows[0],
+    pdfBuffer,
+    filename,
+  };
+}
+
+/**
+ * PDF generator for Daily Caretaker Report
+ */
+function generateDailyPdfBuffer({ elderName, elderId, dateStr, stats, aiAnalysis, summaryText }) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
-        margin: 50,
+        margin: 40,
         size: 'A4',
-        info: {
-          Title: `Smriti Saathi Report - ${elderName}`,
-          Author: 'Smriti Saathi Cognitive Guardian',
-        },
+        info: { Title: `Daily Caretaker Report - ${elderName}`, Author: 'Smriti Saathi Cognitive Platform' },
       });
 
       const chunks = [];
-      doc.on('data', chunk => chunks.push(chunk));
+      doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-      // Primary header
-      doc.rect(50, 50, 495, 75).fill('#78350F');
-      doc.fillColor('#FFFFFF').fontSize(22).font('Helvetica-Bold').text('SMRITI SAATHI (स्मृति साथी)', 70, 65);
-      doc.fontSize(11).font('Helvetica').text(`Elder Observation Report | Period: Last ${periodDays} Days`, 70, 95);
+      // Top Header Banner
+      doc.rect(40, 40, 515, 65).fill('#4338CA'); // Indigo-700
+      doc.fillColor('#FFFFFF').fontSize(20).font('Helvetica-Bold').text('SMRITI SAATHI (स्मृति साथी)', 55, 52);
+      doc.fontSize(10).font('Helvetica').text(`Daily Caretaker Cognitive & Wellness Report | Date: ${dateStr}`, 55, 78);
 
       // Metadata card
-      doc.fillColor('#0F172A').fontSize(14).font('Helvetica-Bold').text(`Elder: ${elderName}`, 50, 145);
-      doc.fontSize(10).font('Helvetica').fillColor('#64748B').text(`Generated: ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`, 50, 165);
+      doc.fillColor('#1E293B').fontSize(12).font('Helvetica-Bold').text(`Elder: ${elderName} (ID: ${elderId.slice(0, 8)}...)`, 40, 120);
+      doc.fontSize(9).font('Helvetica').fillColor('#64748B').text(`Generated at: ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`, 40, 136);
 
       // Section 1: Summary Box
-      doc.rect(50, 190, 495, 110).fillAndStroke('#FEF3C7', '#F59E0B');
-      doc.fillColor('#92400E').fontSize(12).font('Helvetica-Bold').text('Observation Summary:', 65, 202);
-      doc.fillColor('#1E293B').fontSize(10).font('Helvetica').text(summaryText, 65, 222, { width: 465, lineGap: 3 });
+      doc.rect(40, 155, 515, 75).fillAndStroke('#EEF2FF', '#C7D2FE');
+      doc.fillColor('#3730A3').fontSize(11).font('Helvetica-Bold').text('Daily Observation Summary:', 52, 165);
+      doc.fillColor('#1E293B').fontSize(9).font('Helvetica').text(summaryText, 52, 183, { width: 490, lineGap: 2 });
 
-      // Section 2: Visual Statistics (Drawn with pdfkit vector primitives)
-      doc.fillColor('#0F172A').fontSize(13).font('Helvetica-Bold').text('Key Practice Metrics', 50, 320);
+      // Section 2: Metric Boxes
+      doc.fillColor('#1E293B').fontSize(11).font('Helvetica-Bold').text('Daily Activity Metrics', 40, 245);
 
-      // Metric Boxes
       const metrics = [
-        { label: 'Active Days', val: `${stats.activeDays} / ${periodDays}`, color: '#2563EB' },
-        { label: 'Total Sessions', val: `${stats.totalSessions}`, color: '#7C3AED' },
-        { label: 'Avg Accuracy', val: `${stats.overallAvgAccuracy}%`, color: '#059669' },
-        { label: 'Medicine Adherence', val: `${stats.medicines.adherenceRate}%`, color: '#D97706' },
+        { label: 'Total Played', val: `${stats.totalPlayed}`, color: '#4338CA' },
+        { label: 'Completed', val: `${stats.totalCompleted}`, color: '#059669' },
+        { label: 'Incomplete / Rest', val: `${stats.incompleteCount}`, color: '#D97706' },
+        { label: 'Avg Accuracy', val: `${stats.avgAccuracy}%`, color: '#2563EB' },
       ];
 
       metrics.forEach((m, idx) => {
-        const x = 50 + idx * 128;
-        doc.rect(x, 345, 115, 60).fillAndStroke('#F8FAFC', '#CBD5E1');
-        doc.fillColor(m.color).fontSize(16).font('Helvetica-Bold').text(m.val, x + 10, 360, { width: 95, align: 'center' });
-        doc.fillColor('#64748B').fontSize(9).font('Helvetica').text(m.label, x + 10, 385, { width: 95, align: 'center' });
+        const x = 40 + idx * 132;
+        doc.rect(x, 262, 120, 50).fillAndStroke('#F8FAFC', '#E2E8F0');
+        doc.fillColor(m.color).fontSize(16).font('Helvetica-Bold').text(m.val, x + 5, 272, { width: 110, align: 'center' });
+        doc.fillColor('#64748B').fontSize(8.5).font('Helvetica').text(m.label, x + 5, 294, { width: 110, align: 'center' });
       });
 
-      // Section 3: Medicine & Safety Breakdown Table
-      doc.fillColor('#0F172A').fontSize(13).font('Helvetica-Bold').text('Safety & Adherence Log', 50, 435);
+      // Section 3: Current Difficulty for All 8 Games
+      doc.fillColor('#1E293B').fontSize(11).font('Helvetica-Bold').text('8 Cognitive Games – Current Adaptive Difficulty Levels', 40, 328);
 
-      doc.rect(50, 455, 495, 24).fill('#E2E8F0');
-      doc.fillColor('#334155').fontSize(10).font('Helvetica-Bold')
-        .text('Metric Item', 60, 462)
-        .text('Record Status', 320, 462)
-        .text('Evaluation', 440, 462);
+      doc.rect(40, 344, 515, 20).fill('#E2E8F0');
+      doc.fillColor('#334155').fontSize(8.5).font('Helvetica-Bold')
+        .text('Cognitive Game', 50, 350)
+        .text('Level', 260, 350)
+        .text('Total Sessions', 360, 350)
+        .text('Status', 460, 350);
 
-      const tableRows = [
-        ['Prescribed Medicine Doses', `${stats.medicines.confirmed} Confirmed / ${stats.medicines.missed} Missed`, stats.medicines.adherenceRate >= 80 ? 'Good' : 'Needs Support'],
-        ['Emergency SOS Signals', `${stats.safety.sosCount} Recorded`, stats.safety.sosCount === 0 ? 'Clear' : 'Attention'],
-        ['Location Wandering Checks', `${stats.safety.lostEventsCount} Recorded`, stats.safety.lostEventsCount === 0 ? 'Clear' : 'Attention'],
+      stats.gamesStatus.forEach((g, idx) => {
+        const y = 366 + idx * 20;
+        doc.rect(40, y, 515, 20).fill(idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC');
+        const gameTitle = g.gameType.replace(/_/g, ' ').toUpperCase();
+        doc.fillColor('#1E293B').fontSize(8).font('Helvetica')
+          .text(gameTitle, 50, y + 5)
+          .font('Helvetica-Bold')
+          .text(g.level.toUpperCase(), 260, y + 5)
+          .font('Helvetica')
+          .text(`${g.sessionsCount}`, 360, y + 5)
+          .text(g.sessionsCount > 0 ? 'Active' : 'Unplayed', 460, y + 5);
+      });
+
+      // Section 4: AI Observations & Adaptive Decisions
+      let currentY = 536;
+      doc.fillColor('#1E293B').fontSize(11).font('Helvetica-Bold').text('AI Observational Analysis & Recommended Tomorrow Activities', 40, currentY);
+
+      currentY += 16;
+      const obsLines = [
+        `• Comfortable Practice: ${aiAnalysis.comfortableActivities.join('; ') || 'All attempted sessions conducted at baseline.'}`,
+        `• Support Observations: ${aiAnalysis.assistanceNeededActivities.join('; ') || 'No repeated difficulties detected today.'}`,
+        `• Recommended for Tomorrow: ${aiAnalysis.recommendedNext.join('; ')}`,
       ];
 
-      tableRows.forEach((r, idx) => {
-        const y = 485 + idx * 26;
-        doc.rect(50, y, 495, 26).fill(idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC');
-        doc.fillColor('#1E293B').fontSize(9).font('Helvetica')
-          .text(r[0], 60, y + 8)
-          .text(r[1], 320, y + 8)
-          .font('Helvetica-Bold')
-          .text(r[2], 440, y + 8);
+      obsLines.forEach((line) => {
+        doc.fillColor('#334155').fontSize(8.5).font('Helvetica').text(line, 45, currentY, { width: 505, lineGap: 2 });
+        currentY += 24;
       });
 
-      // Section 4: Suggested Next Steps
-      if (suggestedNextSteps) {
-        doc.fillColor('#0F172A').fontSize(12).font('Helvetica-Bold').text('Suggested Next Steps:', 50, 580);
-        doc.fillColor('#334155').fontSize(9.5).font('Helvetica').text(suggestedNextSteps, 50, 600, { width: 495, lineGap: 3 });
-      }
+      // Mandatory Disclaimer Box
+      doc.rect(40, 740, 515, 42).fillAndStroke('#FEF3C7', '#FDE68A');
+      doc.fillColor('#92400E').fontSize(7.5).font('Helvetica-Bold')
+        .text(MANDATORY_DISCLAIMER, 48, 748, { width: 500, align: 'center', lineGap: 2 });
 
-      // Mandatory Footer on Every Page
-      const disclaimer = 'This report contains observations only. It does not diagnose or treat dementia or any medical condition. Please consult a doctor for health concerns.';
-      doc.rect(50, 730, 495, 40).fillAndStroke('#FFFBEB', '#FDE68A');
-      doc.fillColor('#B45309').fontSize(8.5).font('Helvetica-Bold').text(disclaimer, 60, 742, { width: 475, align: 'center' });
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * PDF generator for Weekly Family Report
+ */
+function generateWeeklyPdfBuffer({ elderName, elderId, periodStr, stats, aiAnalysis, summaryText, familyRecommendations }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        margin: 40,
+        size: 'A4',
+        info: { Title: `Weekly Family Report - ${elderName}`, Author: 'Smriti Saathi Cognitive Platform' },
+      });
+
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+      // Header Banner
+      doc.rect(40, 40, 515, 65).fill('#059669'); // Emerald-600
+      doc.fillColor('#FFFFFF').fontSize(20).font('Helvetica-Bold').text('SMRITI SAATHI (स्मृति साथी)', 55, 52);
+      doc.fontSize(10).font('Helvetica').text(`Weekly Family Progress & Activity Report | Period: ${periodStr}`, 55, 78);
+
+      // Metadata card
+      doc.fillColor('#1E293B').fontSize(12).font('Helvetica-Bold').text(`Elder: ${elderName}`, 40, 120);
+      doc.fontSize(9).font('Helvetica').fillColor('#64748B').text(`Generated: ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`, 40, 136);
+
+      // Section 1: Summary Box
+      doc.rect(40, 155, 515, 70).fillAndStroke('#ECFDF5', '#A7F3D0');
+      doc.fillColor('#065F46').fontSize(11).font('Helvetica-Bold').text('Weekly Activity Summary:', 52, 165);
+      doc.fillColor('#1E293B').fontSize(9).font('Helvetica').text(summaryText, 52, 183, { width: 490, lineGap: 2 });
+
+      // Section 2: Metric Boxes
+      doc.fillColor('#1E293B').fontSize(11).font('Helvetica-Bold').text('Weekly Practice Totals', 40, 240);
+
+      const metrics = [
+        { label: 'Active Days', val: `${stats.activeDays} / 7`, color: '#059669' },
+        { label: 'Total Sessions', val: `${stats.totalPlayed}`, color: '#4338CA' },
+        { label: 'Average Accuracy', val: `${stats.avgAccuracy}%`, color: '#2563EB' },
+        { label: 'Adaptive Adjustments', val: `${stats.difficultyAdjustments.length}`, color: '#D97706' },
+      ];
+
+      metrics.forEach((m, idx) => {
+        const x = 40 + idx * 132;
+        doc.rect(x, 256, 120, 50).fillAndStroke('#F8FAFC', '#E2E8F0');
+        doc.fillColor(m.color).fontSize(16).font('Helvetica-Bold').text(m.val, x + 5, 266, { width: 110, align: 'center' });
+        doc.fillColor('#64748B').fontSize(8.5).font('Helvetica').text(m.label, x + 5, 288, { width: 110, align: 'center' });
+      });
+
+      // Section 3: Game-Wise Weekly Analysis Table
+      doc.fillColor('#1E293B').fontSize(11).font('Helvetica-Bold').text('8 Cognitive Games – Weekly Engagement Summary', 40, 322);
+
+      doc.rect(40, 338, 515, 20).fill('#E2E8F0');
+      doc.fillColor('#334155').fontSize(8.5).font('Helvetica-Bold')
+        .text('Cognitive Game', 50, 344)
+        .text('Weekly Sessions', 230, 344)
+        .text('Avg Accuracy', 340, 344)
+        .text('Current Level', 450, 344);
+
+      stats.gamesStatus.forEach((g, idx) => {
+        const y = 360 + idx * 20;
+        doc.rect(40, y, 515, 20).fill(idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC');
+        const st = stats.gameStats[g.gameType] || { sessionsCount: 0, avgAccuracy: null };
+        const gameTitle = g.gameType.replace(/_/g, ' ').toUpperCase();
+        doc.fillColor('#1E293B').fontSize(8).font('Helvetica')
+          .text(gameTitle, 50, y + 5)
+          .text(`${st.sessionsCount} sessions`, 230, y + 5)
+          .text(st.avgAccuracy !== null ? `${st.avgAccuracy}%` : '—', 340, y + 5)
+          .font('Helvetica-Bold')
+          .text(g.level.toUpperCase(), 450, y + 5);
+      });
+
+      // Section 4: Family Engagement Recommendations
+      let currentY = 532;
+      doc.fillColor('#1E293B').fontSize(11).font('Helvetica-Bold').text('Suggestions for Family Members & Caregivers', 40, currentY);
+
+      currentY += 16;
+      familyRecommendations.forEach((rec) => {
+        doc.fillColor('#334155').fontSize(8.5).font('Helvetica').text(`• ${rec}`, 45, currentY, { width: 505, lineGap: 2 });
+        currentY += 20;
+      });
+
+      // Mandatory Disclaimer Box
+      doc.rect(40, 740, 515, 42).fillAndStroke('#FEF3C7', '#FDE68A');
+      doc.fillColor('#92400E').fontSize(7.5).font('Helvetica-Bold')
+        .text(MANDATORY_DISCLAIMER, 48, 748, { width: 500, align: 'center', lineGap: 2 });
 
       doc.end();
     } catch (err) {

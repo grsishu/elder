@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Pill, CheckCircle2, Clock, X, BellRing, Droplet, Utensils } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Pill, CheckCircle2, Clock, X, BellRing, Droplet } from 'lucide-react';
 import { speak } from '../utils/voice';
 
 export default function TalkingAlarm() {
+  const { t, i18n } = useTranslation();
+  const isHindi = i18n.language.startsWith('hi');
+
   const [activeOccurrences, setActiveOccurrences] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [wakeLock, setWakeLock] = useState(null);
@@ -35,9 +39,12 @@ export default function TalkingAlarm() {
       }
 
       const speakPrompt = () => {
-        speak(`Namaskar. It is time for ${occ.title}. ${occ.schedule_description || ''}`, {
-          lang: 'en',
-          rate: 0.8,
+        const text = isHindi
+          ? `नमस्ते। ${occ.title} लेने का समय हो गया है।`
+          : `Hello. It is time for ${occ.title}. ${occ.schedule_description || ''}`;
+        speak(text, {
+          lang: isHindi ? 'hi' : 'en',
+          rate: 0.65,
         });
       };
 
@@ -49,7 +56,7 @@ export default function TalkingAlarm() {
         if (wakeLock) wakeLock.release().catch(() => {});
       };
     }
-  }, [occ]);
+  }, [occ, isHindi]);
 
   if (!occ) return null;
 
@@ -61,7 +68,11 @@ export default function TalkingAlarm() {
       });
       const data = await res.json();
       if (data.refillWarning) {
-        alert(`Refill Notice: ${data.refillWarning.medicine} has only ${data.refillWarning.remaining} tablets remaining!`);
+        alert(
+          isHindi
+            ? `दवा शेष सूचना: ${data.refillWarning.medicine} की केवल ${data.refillWarning.remaining} गोलियां बची हैं!`
+            : `Refill Notice: ${data.refillWarning.medicine} has only ${data.refillWarning.remaining} tablets remaining!`
+        );
       }
     } catch (e) {
       console.warn(e);
@@ -84,14 +95,17 @@ export default function TalkingAlarm() {
         </div>
 
         <span className="text-xs font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full inline-block mb-3">
-          {occ.reminder_type.toUpperCase()} REMINDER
+          {isHindi ? 'दवा / दैनिक अनुस्मारक' : 'DAILY REMINDER'}
         </span>
 
         <h2 className="text-3xl font-black text-slate-800 mb-2 leading-tight">
           {occ.title}
         </h2>
         <p className="text-sm font-semibold text-slate-500 mb-8 max-w-sm mx-auto">
-          {occ.schedule_description || 'Please take this medication as scheduled by your doctor.'}
+          {occ.schedule_description ||
+            (isHindi
+              ? 'कृपया डॉक्टर के निर्देशानुसार यह दवा समय पर लें।'
+              : 'Please take this medication as scheduled by your doctor.')}
         </p>
 
         <div className="space-y-3">
@@ -99,21 +113,21 @@ export default function TalkingAlarm() {
             onClick={() => handleAction('done')}
             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 text-lg active:scale-95 transition-transform"
           >
-            <CheckCircle2 className="w-6 h-6" /> ✓ I Took It (दवा ले ली)
+            <CheckCircle2 className="w-6 h-6" /> {t('reminders.done_button')}
           </button>
 
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => handleAction('snooze')}
-              className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold py-3.5 rounded-2xl text-sm flex items-center justify-center gap-1.5"
+              className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold py-3.5 rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-1.5"
             >
-              <Clock className="w-4 h-4" /> Remind in 10m
+              <Clock className="w-4 h-4" /> {t('reminders.remind_10m')}
             </button>
             <button
               onClick={() => handleAction('skip')}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-2xl text-sm"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-2xl text-xs sm:text-sm"
             >
-              Skip (छोड़ें)
+              {t('reminders.skip')}
             </button>
           </div>
         </div>

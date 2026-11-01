@@ -287,6 +287,40 @@ export default function Login() {
               <PhoneCall className="w-5 h-5 text-amber-600" />
               <span>{t('auth.call_me')}</span>
             </button>
+
+            {/* Quick Demo Access for Public Evaluators */}
+            <div className="pt-2 border-t border-slate-200 space-y-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const r = await fetch('/api/auth/demo-quick-login', { method: 'POST' });
+                    const d = await r.json();
+                    if (d.success) {
+                      login(d.user, d.elder, null);
+                      navigate('/');
+                    }
+                  } catch (e) {
+                    setError('Quick login failed: ' + e.message);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="w-full py-3.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-2 border-emerald-300 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition"
+              >
+                <span>⚡</span>
+                <span>One-Click Demo Access (Explore Application)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate('/register')}
+                className="w-full py-2.5 text-xs text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
+              >
+                New User? Create Elder Profile & Register →
+              </button>
+            </div>
           </div>
         </div>
       )}

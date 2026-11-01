@@ -1,21 +1,32 @@
 import { query } from '../db.js';
 
-const STEPS = ['E1', 'E2', 'E3', 'M1', 'M2', 'M3', 'H1', 'H2', 'H3'];
+export const COGNITIVE_GAMES = [
+  'memory_match',
+  'memory_lane',
+  'find_pair',
+  'daily_routine',
+  'word_wizard',
+  'sort_it_out',
+  'music_memories',
+  'puzzle_time',
+];
 
-const STEP_LEVEL_MAP = {
-  E1: 'easy', E2: 'easy', E3: 'easy',
-  M1: 'medium', M2: 'medium', M3: 'medium',
-  H1: 'hard', H2: 'hard', H3: 'hard'
+export const GAME_ALIASES = {
+  picture_matching: 'find_pair',
+  remember_objects: 'memory_match',
+  name_face: 'memory_lane',
+  whose_voice: 'music_memories',
+  pattern_game: 'puzzle_time',
+  find_object: 'word_wizard',
 };
 
-const ALL_GAMES = [
-  'name_face',
-  'whose_voice',
-  'picture_matching',
-  'pattern_game',
-  'daily_routine',
-  'voice_fluency'
-];
+export const LEVELS = ['easy', 'medium', 'hard'];
+
+export function canonicalGameType(gameType) {
+  if (!gameType) return 'memory_match';
+  const clean = gameType.toLowerCase().trim();
+  return GAME_ALIASES[clean] || clean;
+}
 
 /**
  * Calculates updated Elo rating based on game performance
@@ -29,26 +40,32 @@ export function calculateNewElo(currentRating, accuracy, level) {
 }
 
 /**
- * Record a game session and update adaptive difficulty & Elo
+ * Record a game session and run the Adaptive Difficulty Engine
  */
 export async function recordGameSession({
   elderId,
   clientSessionId,
-  gameType,
-  level,
-  step,
-  score,
-  accuracy,
+  gameType: rawGameType,
+  level: requestedLevel,
+  score = 100,
+  accuracy = 100,
   responseTimeMs = 0,
   errorsCount = 0,
   hintsCount = 0,
+  attemptsCount = 1,
+  totalQuestions = 4,
+  correctAnswers = 4,
+  incorrectAnswers = 0,
+  completionStatus = 'completed',
   durationSeconds = 0,
   mood = null,
 }) {
-  // Check if session already recorded (idempotency via clientSessionId)
+  const gameType = canonicalGameType(rawGameType);
+
+  // 1. Idempotency check via clientSessionId
   if (clientSessionId) {
     const existing = await query(
-      'SELECT id, score, accuracy FROM game_sessions WHERE client_session_id = $1',
+      'SELECT id, score, accuracy, level FROM game_sessions WHERE client_session_id = $1',
       [clientSessionId]
     );
     if (existing.rows.length > 0) {
@@ -56,19 +73,36 @@ export async function recordGameSession({
     }
   }
 
-  // 1. Insert session record
+  // 2. Fetch current difficulty rating for this specific game
+  let ratingRes = await query(
+    `SELECT * FROM elder_game_ratings WHERE elder_id = $1 AND game_type = $2`,
+    [elderId, gameType]
+  );
+
+  let currentElo = 1000.0;
+  let currentLevel = requestedLevel || 'easy';
+  let sessionsCount = 0;
+
+  if (ratingRes.rows.length > 0) {
+    currentElo = parseFloat(ratingRes.rows[0].elo_rating) || 1000.0;
+    currentLevel = ratingRes.rows[0].current_step || requestedLevel || 'easy';
+    sessionsCount = parseInt(ratingRes.rows[0].sessions_count, 10) || 0;
+  }
+
+  // 3. Insert session record
   const sessionRes = await query(
     `INSERT INTO game_sessions (
        elder_id, client_session_id, game_type, level, step, score,
-       accuracy, response_time_ms, errors_count, hints_count, duration_seconds, mood
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       accuracy, response_time_ms, errors_count, hints_count, duration_seconds,
+       mood, total_questions, correct_answers, incorrect_answers, attempts_count, completion_status
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING *`,
     [
       elderId,
       clientSessionId || null,
       gameType,
-      level,
-      step,
+      currentLevel,
+      currentLevel, // step stores the level
       score,
       accuracy,
       responseTimeMs,
@@ -76,52 +110,87 @@ export async function recordGameSession({
       hintsCount,
       durationSeconds,
       mood,
+      totalQuestions,
+      correctAnswers,
+      incorrectAnswers,
+      attemptsCount,
+      completionStatus,
     ]
   );
   const session = sessionRes.rows[0];
 
-  // 2. Fetch or initialize elder game rating
-  let ratingRes = await query(
-    `SELECT * FROM elder_game_ratings WHERE elder_id = $1 AND game_type = $2`,
-    [elderId, gameType]
-  );
+  // 4. Compute updated Elo
+  const newElo = calculateNewElo(currentElo, accuracy, currentLevel);
 
-  let currentElo = 1000.0;
-  let currentStep = step || 'E1';
-  let sessionsCount = 0;
-
-  if (ratingRes.rows.length > 0) {
-    currentElo = parseFloat(ratingRes.rows[0].elo_rating);
-    currentStep = ratingRes.rows[0].current_step;
-    sessionsCount = ratingRes.rows[0].sessions_count;
-  }
-
-  // 3. Compute new Elo
-  const newElo = calculateNewElo(currentElo, accuracy, level);
-
-  // 4. Check 3-session rolling accuracy for step progression
-  const recentSessions = await query(
-    `SELECT accuracy FROM game_sessions
+  // 5. Intelligent Adaptive Difficulty Decision
+  // Fetch the last 3 sessions for this specific game
+  const recentSessionsRes = await query(
+    `SELECT accuracy, hints_count, attempts_count, completion_status, level
+     FROM game_sessions
      WHERE elder_id = $1 AND game_type = $2
      ORDER BY created_at DESC LIMIT 3`,
     [elderId, gameType]
   );
 
-  let nextStep = currentStep;
-  if (recentSessions.rows.length >= 3) {
-    const avgAccuracy =
-      recentSessions.rows.reduce((acc, r) => acc + parseFloat(r.accuracy), 0) /
-      recentSessions.rows.length;
+  const recent = recentSessionsRes.rows;
+  let nextLevel = currentLevel;
+  let decisionReason = 'Maintaining current difficulty for stable, comfortable practice.';
+  let difficultyChanged = false;
 
-    const currIdx = STEPS.indexOf(currentStep);
-    if (avgAccuracy >= 80 && currIdx < STEPS.length - 1) {
-      nextStep = STEPS[currIdx + 1];
-    } else if (avgAccuracy < 50 && currIdx > 0) {
-      nextStep = STEPS[currIdx - 1];
+  if (recent.length >= 3) {
+    const avgAccuracy = recent.reduce((sum, s) => sum + parseFloat(s.accuracy || 0), 0) / recent.length;
+    const avgHints = recent.reduce((sum, s) => sum + parseInt(s.hints_count || 0, 10), 0) / recent.length;
+    const allCompleted = recent.every((s) => s.completion_status !== 'incomplete');
+
+    // Rule: Increase difficulty (>=85% across 3 sessions, low hints <= 1.5, completed)
+    if (avgAccuracy >= 85 && avgHints <= 1.5 && allCompleted) {
+      if (currentLevel === 'easy') {
+        nextLevel = 'medium';
+        difficultyChanged = true;
+        decisionReason = `Elder achieved consistent high accuracy (${Math.round(avgAccuracy)}%) across 3 recent sessions with minimal assistance. Gently advancing from Easy to Medium.`;
+      } else if (currentLevel === 'medium') {
+        nextLevel = 'hard';
+        difficultyChanged = true;
+        decisionReason = `Elder demonstrated strong recall and mastery (${Math.round(avgAccuracy)}% accuracy) on Medium. Gently advancing to Hard.`;
+      }
+    }
+    // Rule: Decrease difficulty (repeated <60% accuracy or multiple hints or repeated incompletion)
+    else if (avgAccuracy < 60 || avgHints >= 3.0 || !allCompleted) {
+      if (currentLevel === 'hard') {
+        nextLevel = 'medium';
+        difficultyChanged = true;
+        decisionReason = `Elder encountered difficulty (${Math.round(avgAccuracy)}% accuracy, ${Math.round(avgHints)} hints/session). Easing difficulty from Hard to Medium for comfort.`;
+      } else if (currentLevel === 'medium') {
+        nextLevel = 'easy';
+        difficultyChanged = true;
+        decisionReason = `Recent sessions showed fatigue or repeated assistance needed. Easing difficulty from Medium to Easy to ensure encouragement and confidence.`;
+      }
     }
   }
 
-  // 5. Update elder rating and step
+  // 6. Record difficulty change history if adjusted
+  if (difficultyChanged) {
+    await query(
+      `INSERT INTO adaptive_difficulty_history (
+         elder_id, game_type, old_level, new_level, reason, decided_by, session_id, metrics_snapshot
+       ) VALUES ($1, $2, $3, $4, $5, 'ai', $6, $7)`,
+      [
+        elderId,
+        gameType,
+        currentLevel,
+        nextLevel,
+        decisionReason,
+        session.id,
+        JSON.stringify({
+          sessionsEvaluated: recent.length,
+          avgAccuracy: recent.reduce((s, r) => s + parseFloat(r.accuracy || 0), 0) / recent.length,
+          lastAccuracy: accuracy,
+        }),
+      ]
+    );
+  }
+
+  // 7. Update elder rating and current step in DB
   await query(
     `INSERT INTO elder_game_ratings (elder_id, game_type, elo_rating, current_step, sessions_count, updated_at)
      VALUES ($1, $2, $3, $4, $5, NOW())
@@ -130,79 +199,69 @@ export async function recordGameSession({
          current_step = EXCLUDED.current_step,
          sessions_count = elder_game_ratings.sessions_count + 1,
          updated_at = NOW()`,
-    [elderId, gameType, newElo, nextStep, sessionsCount + 1]
+    [elderId, gameType, newElo, nextLevel, sessionsCount + 1]
   );
 
-  // 6. Fatigue detection: > 15 min session
+  // 8. Fatigue detection (> 15 minutes = 900 seconds)
   const fatigueDetected = durationSeconds > 900;
-
-  // 7. 14-day baseline drop detection (strictly non-diagnostic)
-  await checkBaselineDrift(elderId, gameType);
 
   return {
     session,
     newElo,
-    currentStep: nextStep,
-    nextLevel: STEP_LEVEL_MAP[nextStep] || 'easy',
+    currentLevel: nextLevel,
+    difficultyChanged,
+    decisionReason,
     fatigueDetected,
   };
 }
 
 /**
- * Checks for 14-day performance variance and logs gentle notes
+ * Caretaker override for game difficulty
  */
-async function checkBaselineDrift(elderId, gameType) {
-  try {
-    const baselineRes = await query(
-      `SELECT AVG(accuracy)::numeric(5,2) as mean,
-              STDDEV(accuracy)::numeric(5,2) as stddev,
-              COUNT(*)::int as count
-       FROM game_sessions
-       WHERE elder_id = $1 AND game_type = $2
-         AND created_at >= NOW() - INTERVAL '14 days'
-         AND created_at < NOW() - INTERVAL '3 days'`,
-      [elderId, gameType]
-    );
-
-    const { mean, stddev, count } = baselineRes.rows[0] || {};
-    if (!count || count < 5 || !stddev || parseFloat(stddev) === 0) return;
-
-    const recentRes = await query(
-      `SELECT AVG(accuracy)::numeric(5,2) as recent_mean
-       FROM game_sessions
-       WHERE elder_id = $1 AND game_type = $2
-         AND created_at >= NOW() - INTERVAL '3 days'`,
-      [elderId, gameType]
-    );
-
-    const recentMean = parseFloat(recentRes.rows[0]?.recent_mean);
-    if (!isNaN(recentMean)) {
-      const zScore = (recentMean - parseFloat(mean)) / parseFloat(stddev);
-      if (zScore <= -2.0) {
-        // Log gentle, non-diagnostic caregiver note
-        await query(
-          `INSERT INTO silent_guardian_events (elder_id, event_type, reason, severity, details)
-           VALUES ($1, 'fluency_drop', $2, 'info', $3)
-           ON CONFLICT DO NOTHING`,
-          [
-            elderId,
-            'Gentle practice notice: Ramesh had a slightly slower response pace on games this week. Encouraging relaxed sessions is suggested.',
-            JSON.stringify({ gameType, zScore: zScore.toFixed(2), baselineMean: mean, recentMean }),
-          ]
-        );
-      }
-    }
-  } catch (err) {
-    // Non-fatal
+export async function overrideGameDifficulty(elderId, gameTypeInput, newLevel, caretakerId = null, reason = 'Caretaker manual adjustment') {
+  const gameType = canonicalGameType(gameTypeInput);
+  if (!LEVELS.includes(newLevel)) {
+    throw new Error(`Invalid level: ${newLevel}. Must be easy, medium, or hard.`);
   }
+
+  const existingRes = await query(
+    `SELECT current_step FROM elder_game_ratings WHERE elder_id = $1 AND game_type = $2`,
+    [elderId, gameType]
+  );
+  const oldLevel = existingRes.rows[0]?.current_step || 'easy';
+
+  await query(
+    `INSERT INTO elder_game_ratings (elder_id, game_type, current_step, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (elder_id, game_type) DO UPDATE
+     SET current_step = EXCLUDED.current_step,
+         updated_at = NOW()`,
+    [elderId, gameType, newLevel]
+  );
+
+  await query(
+    `INSERT INTO adaptive_difficulty_history (
+       elder_id, game_type, old_level, new_level, reason, decided_by
+     ) VALUES ($1, $2, $3, $4, $5, 'caretaker')`,
+    [elderId, gameType, oldLevel, newLevel, reason]
+  );
+
+  return {
+    success: true,
+    gameType,
+    oldLevel,
+    newLevel,
+    decidedBy: 'caretaker',
+    reason,
+  };
 }
 
 /**
- * Get Today's 3 Brain Exercise Games based on spaced repetition & variety
+ * Fetches current difficulties and stats for all 8 cognitive games
  */
-export async function getTodaysExercises(elderId) {
+export async function getElderGamesStatus(elderId) {
   const ratingsRes = await query(
-    `SELECT game_type, current_step, elo_rating, updated_at
+    `SELECT game_type, current_step as level, elo_rating, sessions_count, updated_at
      FROM elder_game_ratings WHERE elder_id = $1`,
     [elderId]
   );
@@ -212,24 +271,100 @@ export async function getTodaysExercises(elderId) {
     ratingMap[r.game_type] = r;
   }
 
-  // Score each game: prioritize games not played today, lower Elo, or never played
-  const scoredGames = ALL_GAMES.map((gameType) => {
+  return COGNITIVE_GAMES.map((gameType) => {
     const r = ratingMap[gameType];
-    const step = r ? r.current_step : 'E1';
-    const level = STEP_LEVEL_MAP[step] || 'easy';
-    const elo = r ? parseFloat(r.elo_rating) : 1000;
-    const lastPlayed = r ? new Date(r.updated_at).getTime() : 0;
-    const hoursSinceLast = (Date.now() - lastPlayed) / (1000 * 60 * 60);
-
     return {
       gameType,
-      step,
-      level,
-      elo,
-      priority: hoursSinceLast + (1200 - elo) * 0.1,
+      level: r?.level || 'easy',
+      elo: r ? parseFloat(r.elo_rating) : 1000.0,
+      sessionsCount: r ? parseInt(r.sessions_count, 10) : 0,
+      lastPlayed: r ? r.updated_at : null,
+    };
+  });
+}
+
+/**
+ * Get Today's 3 Brain Exercise Games based on spaced repetition & variety
+ */
+export async function getTodaysExercises(elderId) {
+  const ratings = await getElderGamesStatus(elderId);
+
+  // Prioritize games with fewer sessions, lower Elo, or not played recently
+  const scored = ratings.map((g) => {
+    const lastPlayed = g.lastPlayed ? new Date(g.lastPlayed).getTime() : 0;
+    const hoursSinceLast = (Date.now() - lastPlayed) / (1000 * 60 * 60);
+    return {
+      ...g,
+      priority: hoursSinceLast + (1200 - g.elo) * 0.1,
     };
   });
 
-  scoredGames.sort((a, b) => b.priority - a.priority);
-  return scoredGames.slice(0, 3);
+  scored.sort((a, b) => b.priority - a.priority);
+  return scored.slice(0, 3);
+}
+
+/**
+ * Generates clear, non-clinical AI cognitive observations based on real history
+ */
+export async function generateCognitiveAnalysis(elderId, periodDays = 7) {
+  const statsRes = await query(
+    `SELECT 
+       game_type,
+       COUNT(*)::int as total_sessions,
+       ROUND(AVG(accuracy), 1) as avg_accuracy,
+       SUM(hints_count)::int as total_hints,
+       SUM(errors_count)::int as total_errors,
+       level
+     FROM game_sessions
+     WHERE elder_id = $1 AND created_at >= NOW() - $2::interval
+     GROUP BY game_type, level`,
+    [elderId, `${periodDays} days`]
+  );
+
+  const comfortable = [];
+  const assistanceNeeded = [];
+  const recommendedNext = [];
+
+  const rows = statsRes.rows;
+  if (rows.length === 0) {
+    return {
+      hasData: false,
+      summary: 'No cognitive practice sessions recorded in this period.',
+      comfortableActivities: [],
+      assistanceNeededActivities: [],
+      recommendedNext: ['Begin with gentle Memory Match and Daily Routine exercises at Easy level.'],
+      disclaimer: 'This cognitive activity summary is for wellness observation and engagement only, not a clinical diagnosis.',
+    };
+  }
+
+  rows.forEach((r) => {
+    const acc = parseFloat(r.avg_accuracy || 0);
+    const hints = parseInt(r.total_hints || 0, 10);
+    const gameName = r.game_type.replace(/_/g, ' ');
+
+    if (acc >= 80 && hints <= 2) {
+      comfortable.push(`${gameName} (${r.level}) — ${acc}% accuracy`);
+    } else if (acc < 65 || hints >= 4) {
+      assistanceNeeded.push(`${gameName} (${r.level}) — required gentle guidance (${hints} hints)`);
+    }
+  });
+
+  if (comfortable.length > 0) {
+    recommendedNext.push(`Continue enjoyable engagement with ${comfortable[0].split('—')[0]}.`);
+  }
+  if (assistanceNeeded.length > 0) {
+    recommendedNext.push(`Provide extra time and gentle hints during ${assistanceNeeded[0].split('—')[0]}.`);
+  }
+  if (recommendedNext.length === 0) {
+    recommendedNext.push('Encourage daily routine and picture matching sessions at current comfortable levels.');
+  }
+
+  return {
+    hasData: true,
+    totalSessionsRecorded: rows.reduce((acc, r) => acc + r.total_sessions, 0),
+    comfortableActivities: comfortable,
+    assistanceNeededActivities: assistanceNeeded,
+    recommendedNext,
+    disclaimer: 'This cognitive activity summary is for wellness observation and engagement only, not a clinical diagnosis.',
+  };
 }

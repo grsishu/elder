@@ -2,7 +2,13 @@ import express from 'express';
 import crypto from 'crypto';
 import { query } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { createReportDraft, computeElderStats } from '../services/aiReport.js';
+import { createReportDraft, computeElderStats, generateDailyCaretakerReport, generateWeeklyFamilyReport } from '../services/aiReport.js';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { sendEmergencySms } from '../services/twilio.js';
 import { config } from '../config.js';
 import { logServerError } from '../errors.js';
@@ -318,6 +324,121 @@ router.post('/settings', requireAuth, async (req, res) => {
   );
 
   return res.json({ success: true, settings: upsertRes.rows[0] });
+});
+
+// Helper to resolve elderId flexibly
+async function resolveElderId(req) {
+  if (req.body?.elderId) return req.body.elderId;
+  if (req.query?.elderId) return req.query.elderId;
+  if (req.elder?.id) return req.elder.id;
+  if (req.user?.user_id) {
+    const res = await query('SELECT id FROM elders WHERE user_id = $1 LIMIT 1', [req.user.user_id]);
+    if (res.rows[0]?.id) return res.rows[0].id;
+  }
+  const anyElder = await query('SELECT id FROM elders ORDER BY created_at ASC LIMIT 1');
+  return anyElder.rows[0]?.id || null;
+}
+
+// GET /api/reports/daily - List daily cognitive reports
+router.get('/daily', requireAuth, async (req, res) => {
+  try {
+    const elderId = await resolveElderId(req);
+    if (!elderId) return res.status(404).json({ error: 'NO_ELDER_FOUND' });
+
+    const reportsRes = await query(
+      `SELECT id, elder_id, report_type, period_start, period_end, summary_text,
+              ai_observations, recommendations, stats_json, pdf_path, generated_at
+       FROM cognitive_activity_reports
+       WHERE elder_id = $1 AND report_type = 'daily_caretaker'
+       ORDER BY generated_at DESC
+       LIMIT 30`,
+      [elderId]
+    );
+
+    return res.json({ success: true, reports: reportsRes.rows });
+  } catch (err) {
+    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+  }
+});
+
+// GET /api/reports/weekly - List weekly cognitive reports
+router.get('/weekly', requireAuth, async (req, res) => {
+  try {
+    const elderId = await resolveElderId(req);
+    if (!elderId) return res.status(404).json({ error: 'NO_ELDER_FOUND' });
+
+    const reportsRes = await query(
+      `SELECT id, elder_id, report_type, period_start, period_end, summary_text,
+              ai_observations, recommendations, stats_json, pdf_path, generated_at
+       FROM cognitive_activity_reports
+       WHERE elder_id = $1 AND report_type = 'weekly_family'
+       ORDER BY generated_at DESC
+       LIMIT 30`,
+      [elderId]
+    );
+
+    return res.json({ success: true, reports: reportsRes.rows });
+  } catch (err) {
+    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+  }
+});
+
+// POST /api/reports/daily/generate - Trigger immediate daily report generation
+router.post('/daily/generate', requireAuth, async (req, res) => {
+  try {
+    const elderId = await resolveElderId(req);
+    if (!elderId) return res.status(404).json({ error: 'NO_ELDER_FOUND' });
+
+    const result = await generateDailyCaretakerReport(elderId);
+    return res.json({ success: true, report: result.report });
+  } catch (err) {
+    logServerError({ message: `Daily report generation error: ${err.message}`, route: '/api/reports/daily/generate', statusCode: 500 });
+    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+  }
+});
+
+// POST /api/reports/weekly/generate - Trigger immediate weekly report generation
+router.post('/weekly/generate', requireAuth, async (req, res) => {
+  try {
+    const elderId = await resolveElderId(req);
+    if (!elderId) return res.status(404).json({ error: 'NO_ELDER_FOUND' });
+
+    const result = await generateWeeklyFamilyReport(elderId);
+    return res.json({ success: true, report: result.report });
+  } catch (err) {
+    logServerError({ message: `Weekly report generation error: ${err.message}`, route: '/api/reports/weekly/generate', statusCode: 500 });
+    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+  }
+});
+
+// GET /api/reports/:id/pdf - Stream/download PDF file
+router.get('/:id/pdf', async (req, res) => {
+  try {
+    const reportRes = await query(
+      `SELECT id, elder_id, pdf_path, report_type FROM cognitive_activity_reports WHERE id = $1`,
+      [req.params.id]
+    );
+    if (reportRes.rows.length === 0) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Report not found' });
+    }
+
+    const { pdf_path, report_type, id } = reportRes.rows[0];
+    if (!pdf_path) {
+      return res.status(404).json({ error: 'PDF_NOT_FOUND', message: 'PDF file not available' });
+    }
+
+    const absPath = path.resolve(__dirname, '../../', pdf_path.replace(/^\//, ''));
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).json({ error: 'FILE_MISSING', message: 'PDF file does not exist on disk' });
+    }
+
+    const filename = path.basename(absPath) || `smriti-saathi-${report_type}-${id}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    return fs.createReadStream(absPath).pipe(res);
+  } catch (err) {
+    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+  }
 });
 
 export default router;

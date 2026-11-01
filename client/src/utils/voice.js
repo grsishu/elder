@@ -16,8 +16,17 @@ let currentVoiceSpeed = parseFloat(localStorage.getItem('smriti_voice_speed') ||
 const LANG_MAP = {
   en: 'en-IN',
   hi: 'hi-IN',
-  bn: 'bn-IN',
+  ta: 'ta-IN',
   as: 'as-IN',
+  bn: 'bn-IN',
+  te: 'te-IN',
+  ml: 'ml-IN',
+  kn: 'kn-IN',
+  mr: 'mr-IN',
+  gu: 'gu-IN',
+  or: 'or-IN',
+  pa: 'pa-IN',
+  ur: 'ur-IN',
 };
 
 // Initialize voices and listen for voiceschanged
@@ -179,5 +188,43 @@ export function playAudio(source, onComplete) {
   } catch (err) {
     console.warn('[Voice] PlayAudio failed:', err);
     onComplete?.();
+  }
+}
+
+/**
+ * Starts Web Speech Recognition for multilingual voice answering in games & UI
+ */
+export function startSpeechRecognition({ lang, onResult, onError, onEnd }) {
+  if (typeof window === 'undefined') return null;
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    onError?.('Speech recognition not supported in this browser');
+    return null;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = LANG_MAP[lang] || lang || 'hi-IN';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0]?.[0]?.transcript || '';
+    onResult?.(transcript);
+  };
+
+  recognition.onerror = (event) => {
+    onError?.(event.error);
+  };
+
+  recognition.onend = () => {
+    onEnd?.();
+  };
+
+  try {
+    recognition.start();
+    return recognition;
+  } catch (err) {
+    onError?.(err.message);
+    return null;
   }
 }
