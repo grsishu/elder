@@ -721,3 +721,4 @@ for (const [lang, navDict] of Object.entries(NAVIGATION_I18N)) {
 }
 
 console.log('[i18n builder] Completed multilingual navigation translations!');
+

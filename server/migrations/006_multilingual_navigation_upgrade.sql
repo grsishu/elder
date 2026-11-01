@@ -45,3 +45,4 @@ CREATE INDEX IF NOT EXISTS idx_nav_events_elder ON navigation_events(elder_id, c
 -- 3. Enhance saved_places with category & relationship
 ALTER TABLE saved_places ADD COLUMN IF NOT EXISTS category VARCHAR(64) DEFAULT 'saved';
 ALTER TABLE saved_places ADD COLUMN IF NOT EXISTS relationship VARCHAR(64);
+

@@ -171,3 +171,4 @@ export function formatManeuverInstruction({
   const fn = dict[actionKey] || dict.straight;
   return fn(dist, streetName || destinationName);
 }
+
