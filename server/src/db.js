@@ -1,10 +1,13 @@
 import pg from 'pg';
-import sqlite3 from 'sqlite3';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import { config } from './config.js';
+
+const require = createRequire(import.meta.url);
+let sqlite3Module = null;
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -28,7 +31,15 @@ export function getDatabaseType() {
 
 export function initSqliteDb() {
   if (sqliteDb) return sqliteDb;
-  sqliteDb = new sqlite3.Database(sqlitePath);
+  if (!sqlite3Module) {
+    try {
+      sqlite3Module = require('sqlite3');
+    } catch (err) {
+      console.warn(`[DB] SQLite3 native module could not be loaded (${err.message}).`);
+      throw err;
+    }
+  }
+  sqliteDb = new sqlite3Module.Database(sqlitePath);
   sqliteDb.configure('busyTimeout', 5000);
   isSqlite = true;
   return sqliteDb;

@@ -3,7 +3,7 @@ services:
     name: smriti-saathi
     runtime: node
     plan: starter
-    region: oregon
+    region: singapore
     buildCommand: npm run build
     startCommand: npm start
     healthCheckPath: /health
@@ -11,6 +11,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 22.14.0
       - key: PORT
         value: 10000
       - key: JWT_SECRET
@@ -29,6 +31,6 @@ services:
 databases:
   - name: elder-db
     plan: starter
-    region: oregon
+    region: singapore
     databaseName: elder_db
     user: elder_user

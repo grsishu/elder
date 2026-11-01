@@ -38,3 +38,4 @@ try {
   console.error('\n[Build Error] Production build failed:', error.message);
   process.exit(1);
 }
+

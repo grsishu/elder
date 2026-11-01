@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "AI-Based Cognitive Gaming and Memory Assistance Platform for Elderly Dementia Patients in North Eastern India",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0 <=22.x",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
     "start": "node server/src/index.js",
     "build": "node scripts/build.js",
