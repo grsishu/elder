@@ -17,6 +17,7 @@
     "dev:client": "npm --prefix client run dev",
     "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,green\" \"npm run dev:server\" \"npm run dev:client\"",
     "check:i18n": "node scripts/check-i18n.js",
+    "test:db": "node scripts/test_pg_connection.js",
     "test": "vitest run"
   },
   "dependencies": {

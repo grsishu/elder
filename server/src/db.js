@@ -36,6 +36,11 @@ export function initSqliteDb() {
       sqlite3Module = require('sqlite3');
     } catch (err) {
       console.warn(`[DB] SQLite3 native module could not be loaded (${err.message}).`);
+      if (config.nodeEnv === 'production') {
+        throw new Error(
+          `SQLite3 is not supported in this production environment (${err.message}). PostgreSQL is required. Please configure DATABASE_URL in your Render Web Service settings.`
+        );
+      }
       throw err;
     }
   }
@@ -48,39 +53,96 @@ export function initSqliteDb() {
 export async function initDb() {
   if (dbInitialized) return;
 
-  if (!isSqlite) {
+  const isProduction = config.nodeEnv === 'production';
+  const rawDbUrl = (process.env.DATABASE_URL || config.databaseUrl || '').trim();
+  const isInvalidProdUrl =
+    !rawDbUrl ||
+    rawDbUrl.includes('localhost') ||
+    rawDbUrl.includes('127.0.0.1');
+
+  if (isProduction) {
+    if (isInvalidProdUrl) {
+      console.error('\n' + '='.repeat(80));
+      console.error('[CRITICAL DATABASE CONFIGURATION ERROR]');
+      console.error('Smriti Saathi is running in PRODUCTION mode, but a valid remote DATABASE_URL is missing!');
+      console.error('');
+      console.error('Render PostgreSQL setup required:');
+      console.error('1. In your Render Dashboard, click "New +" -> "PostgreSQL".');
+      console.error('2. Create the database named "elder-db" in region Singapore.');
+      console.error('3. Copy the "Internal Database URL" (e.g. postgresql://elder_user:...@dpg-...:5432/elder_db).');
+      console.error('4. Go to your Web Service -> "Environment" -> Add "DATABASE_URL" and paste the URL.');
+      console.error('5. Save changes to trigger automatic deployment.');
+      console.error('='.repeat(80) + '\n');
+      throw new Error(
+        'DATABASE_URL environment variable is required in production. Please configure Render PostgreSQL.'
+      );
+    }
+
     try {
       const isRemotePg =
-        config.databaseUrl.includes('render.com') ||
-        config.databaseUrl.includes('neon.tech') ||
-        config.databaseUrl.includes('supabase.co') ||
-        config.databaseUrl.includes('sslmode=require') ||
-        config.databaseUrl.includes('amazonaws.com') ||
-        process.env.PGSSLMODE === 'require' ||
-        (config.nodeEnv === 'production' && !config.databaseUrl.includes('localhost') && !config.databaseUrl.includes('127.0.0.1'));
+        !config.databaseUrl.includes('localhost') &&
+        !config.databaseUrl.includes('127.0.0.1');
 
       pgPool = new Pool({
         connectionString: config.databaseUrl,
         ssl: isRemotePg ? { rejectUnauthorized: false } : false,
-        connectionTimeoutMillis: 5000,
+        connectionTimeoutMillis: 10000,
       });
 
-      // Quick test query to verify Postgres connectivity
       const testClient = await pgPool.connect();
       testClient.release();
-      console.log('[DB] Connected to PostgreSQL successfully.');
+      isSqlite = false;
+      console.log('[DB] Connected to PostgreSQL production database successfully.');
     } catch (err) {
-      console.warn(`[DB] PostgreSQL connection failed (${err.message}). Falling back to SQLite (${sqlitePath})...`);
-      isSqlite = true;
-      if (pgPool) {
-        try { await pgPool.end(); } catch { /* ignore */ }
-        pgPool = null;
-      }
-      initSqliteDb();
+      const maskedUrl = config.databaseUrl.replace(/:[^:@]+@/, ':****@');
+      console.error('\n' + '='.repeat(80));
+      console.error('[CRITICAL DATABASE CONNECTION ERROR]');
+      console.error(`Failed to connect to PostgreSQL at ${maskedUrl}`);
+      console.error(`Error details: ${err.message}`);
+      console.error('');
+      console.error('Troubleshooting:');
+      console.error('1. Verify your Render PostgreSQL database is in status "Available".');
+      console.error('2. Make sure you used the "Internal Database URL" if deploying in the same region.');
+      console.error('3. Check that the password and database name in DATABASE_URL are correct.');
+      console.error('='.repeat(80) + '\n');
+      throw new Error(`Production PostgreSQL connection failed: ${err.message}`);
     }
   } else {
-    initSqliteDb();
-    console.log(`[DB] Running on SQLite (${sqlitePath})`);
+    // Development or test mode: try PostgreSQL if configured, otherwise fall back to SQLite
+    const shouldTryPg = !isSqlite && Boolean(config.databaseUrl && config.databaseUrl.trim());
+
+    if (shouldTryPg) {
+      try {
+        const isRemotePg =
+          config.databaseUrl.includes('render.com') ||
+          config.databaseUrl.includes('neon.tech') ||
+          config.databaseUrl.includes('supabase.co') ||
+          config.databaseUrl.includes('sslmode=require') ||
+          config.databaseUrl.includes('amazonaws.com');
+
+        pgPool = new Pool({
+          connectionString: config.databaseUrl,
+          ssl: isRemotePg ? { rejectUnauthorized: false } : false,
+          connectionTimeoutMillis: 3000,
+        });
+
+        const testClient = await pgPool.connect();
+        testClient.release();
+        isSqlite = false;
+        console.log('[DB] Connected to PostgreSQL successfully.');
+      } catch (err) {
+        console.warn(`[DB] Local PostgreSQL connection failed (${err.message}). Falling back to SQLite (${sqlitePath})...`);
+        isSqlite = true;
+        if (pgPool) {
+          try { await pgPool.end(); } catch { /* ignore */ }
+          pgPool = null;
+        }
+        initSqliteDb();
+      }
+    } else {
+      initSqliteDb();
+      console.log(`[DB] Running on SQLite (${sqlitePath})`);
+    }
   }
 
   dbInitialized = true;
