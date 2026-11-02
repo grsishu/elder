@@ -1,277 +1,67 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Trophy,
   RotateCcw,
-  Eye,
-  EyeOff,
-  CheckCircle2,
   Sparkles,
   Volume2,
-  RefreshCw,
+  Lightbulb,
+  CheckCircle2,
   Camera,
   Image as ImageIcon,
+  Check,
+  HelpCircle,
+  Clock,
+  Layers,
+  ChevronRight,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { speak, cancelSpeech } from '../../utils/voice';
-
-// 10 Picture Puzzle Categories with SVG illustrations
-const PUZZLE_CATEGORIES = [
-  {
-    id: 'bird',
-    name: 'Bird Puzzle',
-    labelKey: 'games.puzzle_categories.bird',
-    defaultLabel: 'Bird Puzzle (पक्षी पहेली)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <defs>
-        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="%23A7F3D0"/>
-          <stop offset="100%" stop-color="%2338BDF8"/>
-        </linearGradient>
-      </defs>
-      <rect width="500" height="300" fill="url(%23bg)"/>
-      <circle cx="80" cy="70" r="45" fill="%23FEF08A"/>
-      <path d="M 0 240 Q 150 180 300 230 T 500 210 L 500 300 L 0 300 Z" fill="%2315803D"/>
-      <path d="M 120 280 Q 240 160 360 210" stroke="%2378350F" stroke-width="16" fill="none" stroke-linecap="round"/>
-      <path d="M 230 190 Q 280 150 330 170" stroke="%2378350F" stroke-width="10" fill="none" stroke-linecap="round"/>
-      <!-- Peacock / Colorful Bird -->
-      <ellipse cx="260" cy="140" rx="36" ry="24" fill="%230284C7"/>
-      <circle cx="285" cy="120" r="16" fill="%230369A1"/>
-      <circle cx="290" cy="116" r="3" fill="%23FFFFFF"/>
-      <polygon points="298,118 316,122 298,126" fill="%23F59E0B"/>
-      <!-- Tail Feathers -->
-      <path d="M 230 145 C 170 110, 130 140, 100 120" stroke="%2310B981" stroke-width="20" stroke-linecap="round" fill="none"/>
-      <circle cx="100" cy="120" r="10" fill="%23047857"/>
-      <circle cx="100" cy="120" r="5" fill="%23FBBF24"/>
-      <path d="M 230 155 C 180 145, 140 175, 110 165" stroke="%23059669" stroke-width="18" stroke-linecap="round" fill="none"/>
-      <circle cx="110" cy="165" r="9" fill="%23047857"/>
-      <circle cx="110" cy="165" r="4" fill="%2338BDF8"/>
-    </svg>`,
-  },
-  {
-    id: 'vegetable',
-    name: 'Vegetable Puzzle',
-    labelKey: 'games.puzzle_categories.vegetable',
-    defaultLabel: 'Vegetable Puzzle (सब्ज़ी पहेली)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <rect width="500" height="300" fill="%23FEF3C7"/>
-      <!-- Wicker Basket -->
-      <ellipse cx="250" cy="220" rx="190" ry="60" fill="%23D97706"/>
-      <ellipse cx="250" cy="205" rx="170" ry="45" fill="%23B45309"/>
-      <!-- Pumpkin -->
-      <circle cx="190" cy="160" r="45" fill="%23EA580C"/>
-      <circle cx="225" cy="160" r="45" fill="%23F97316"/>
-      <rect x="200" y="110" width="12" height="20" rx="4" fill="%2315803D"/>
-      <!-- Eggplant -->
-      <ellipse cx="300" cy="165" rx="35" ry="50" transform="rotate(25 300 165)" fill="%236B21A8"/>
-      <polygon points="275,120 290,115 305,125" fill="%2316A34A"/>
-      <!-- Carrots -->
-      <polygon points="340,195 385,210 330,225" fill="%23F97316"/>
-      <!-- Tomatoes -->
-      <circle cx="140" cy="210" r="28" fill="%23DC2626"/>
-      <circle cx="148" cy="202" r="6" fill="%23FFFFFF" opacity="0.4"/>
-      <circle cx="370" cy="180" r="26" fill="%23EF4444"/>
-    </svg>`,
-  },
-  {
-    id: 'fruit',
-    name: 'Fruit Puzzle',
-    labelKey: 'games.puzzle_categories.fruit',
-    defaultLabel: 'Fruit Puzzle (फल पहेली)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <rect width="500" height="300" fill="%23ECFDF5"/>
-      <!-- Banana leaf -->
-      <ellipse cx="250" cy="210" rx="210" ry="70" fill="%2316A34A"/>
-      <line x1="40" y1="210" x2="460" y2="210" stroke="%2315803D" stroke-width="4"/>
-      <!-- Golden Mangoes -->
-      <ellipse cx="210" cy="155" rx="42" ry="56" transform="rotate(-20 210 155)" fill="%23FBBF24"/>
-      <ellipse cx="270" cy="150" rx="42" ry="56" transform="rotate(20 270 150)" fill="%23F59E0B"/>
-      <!-- Apples -->
-      <circle cx="140" cy="170" r="34" fill="%23DC2626"/>
-      <circle cx="350" cy="175" r="32" fill="%23E11D48"/>
-      <!-- Pomegranate Slice -->
-      <circle cx="240" cy="205" r="26" fill="%23BE123C"/>
-      <circle cx="240" cy="205" r="16" fill="%23FDA4AF"/>
-    </svg>`,
-  },
-  {
-    id: 'flower',
-    name: 'Flower Puzzle',
-    labelKey: 'games.puzzle_categories.flower',
-    defaultLabel: 'Flower Puzzle (कमल का फूल)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <rect width="500" height="300" fill="%23E0F2FE"/>
-      <!-- Pond Waves -->
-      <path d="M 0 180 Q 125 160 250 180 T 500 180 L 500 300 L 0 300 Z" fill="%230284C7"/>
-      <!-- Lily Pads -->
-      <ellipse cx="120" cy="230" rx="80" ry="30" fill="%23059669"/>
-      <ellipse cx="380" cy="240" rx="85" ry="32" fill="%23047857"/>
-      <!-- Lotus Flower Petals -->
-      <ellipse cx="250" cy="160" rx="24" ry="50" fill="%23F43F5E"/>
-      <ellipse cx="225" cy="165" rx="22" ry="46" transform="rotate(-25 225 165)" fill="%23FB7185"/>
-      <ellipse cx="275" cy="165" rx="22" ry="46" transform="rotate(25 275 165)" fill="%23FB7185"/>
-      <ellipse cx="205" cy="175" rx="20" ry="42" transform="rotate(-50 205 175)" fill="%23FDA4AF"/>
-      <ellipse cx="295" cy="175" rx="20" ry="42" transform="rotate(50 295 175)" fill="%23FDA4AF"/>
-      <!-- Golden center -->
-      <circle cx="250" cy="165" r="14" fill="%23FBBF24"/>
-    </svg>`,
-  },
-  {
-    id: 'temple',
-    name: 'Temple & Traditional Objects',
-    labelKey: 'games.puzzle_categories.temple',
-    defaultLabel: 'Temple & Traditional Objects (शांतिपूर्ण मंदिर)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <rect width="500" height="300" fill="%23FEF9C3"/>
-      <!-- Temple Shikhara -->
-      <polygon points="250,30 200,160 300,160" fill="%23D97706"/>
-      <polygon points="250,20 245,35 255,35" fill="%23F59E0B"/>
-      <!-- Kalasha & Flag -->
-      <circle cx="250" cy="20" r="7" fill="%23FBBF24"/>
-      <line x1="250" y1="20" x2="250" y2="5" stroke="%23DC2626" stroke-width="2"/>
-      <polygon points="250,5 275,12 250,19" fill="%23EA580C"/>
-      <!-- Base Sanctum -->
-      <rect x="180" y="160" width="140" height="90" fill="%23B45309"/>
-      <!-- Doorway -->
-      <path d="M 220 250 L 220 200 Q 250 180 280 200 L 280 250 Z" fill="%23451A03"/>
-      <!-- Golden Diya Oil Lamps -->
-      <ellipse cx="140" cy="245" rx="24" ry="10" fill="%23F59E0B"/>
-      <path d="M 140 235 Q 140 215 144 210 Q 148 215 148 235 Z" fill="%23EA580C"/>
-      <ellipse cx="360" cy="245" rx="24" ry="10" fill="%23F59E0B"/>
-      <path d="M 360 235 Q 360 215 364 210 Q 368 215 368 235 Z" fill="%23EA580C"/>
-      <!-- Temple Bells -->
-      <path d="M 80 50 L 80 90 M 70 90 L 90 90 L 85 110 L 75 110 Z" stroke="%23D97706" stroke-width="4" fill="%23FBBF24"/>
-    </svg>`,
-  },
-  {
-    id: 'animal',
-    name: 'Animal Puzzle',
-    labelKey: 'games.puzzle_categories.animal',
-    defaultLabel: 'Animal Puzzle (हाथी पहेली)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <rect width="500" height="300" fill="%23F0FDF4"/>
-      <rect y="210" width="500" height="90" fill="%2322C55E"/>
-      <!-- Friendly Royal Elephant -->
-      <ellipse cx="260" cy="160" rx="90" ry="70" fill="%2364748B"/>
-      <!-- Legs -->
-      <rect x="190" y="190" width="30" height="75" rx="10" fill="%23475569"/>
-      <rect x="235" y="190" width="28" height="75" rx="10" fill="%23475569"/>
-      <rect x="280" y="190" width="28" height="75" rx="10" fill="%23475569"/>
-      <rect x="315" y="190" width="28" height="75" rx="10" fill="%23475569"/>
-      <!-- Head -->
-      <circle cx="160" cy="130" r="50" fill="%2364748B"/>
-      <!-- Ear -->
-      <ellipse cx="185" cy="135" rx="26" ry="40" fill="%23475569"/>
-      <!-- Trunk -->
-      <path d="M 135 145 Q 90 190 120 220 Q 130 225 135 215" stroke="%2364748B" stroke-width="20" stroke-linecap="round" fill="none"/>
-      <!-- Eye -->
-      <circle cx="145" cy="118" r="4" fill="%230F172A"/>
-      <!-- Decorative Shawl -->
-      <rect x="230" y="110" width="70" height="60" rx="8" fill="%23DC2626"/>
-      <rect x="238" y="118" width="54" height="44" rx="4" fill="%23FBBF24"/>
-    </svg>`,
-  },
-  {
-    id: 'nature',
-    name: 'Nature Puzzle',
-    labelKey: 'games.puzzle_categories.nature',
-    defaultLabel: 'Nature Puzzle (प्रकृति और पहाड़)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <rect width="500" height="300" fill="%23BAE6FD"/>
-      <!-- Sun -->
-      <circle cx="250" cy="120" r="45" fill="%23FBBF24"/>
-      <!-- Himalayan Snowy Peaks -->
-      <polygon points="120,70 10,240 230,240" fill="%230284C7"/>
-      <polygon points="120,70 80,130 160,130" fill="%23FFFFFF"/>
-      <polygon points="360,60 220,240 500,240" fill="%230369A1"/>
-      <polygon points="360,60 320,120 400,120" fill="%23FFFFFF"/>
-      <!-- Tea hills -->
-      <path d="M 0 210 Q 140 170 280 220 T 500 200 L 500 300 L 0 300 Z" fill="%2315803D"/>
-      <path d="M 0 240 Q 160 210 320 250 T 500 240 L 500 300 L 0 300 Z" fill="%23166534"/>
-    </svg>`,
-  },
-  {
-    id: 'household',
-    name: 'Household Objects Puzzle',
-    labelKey: 'games.puzzle_categories.household',
-    defaultLabel: 'Household Objects (घरेलू वस्तुएं)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <rect width="500" height="300" fill="%23FFFBEB"/>
-      <!-- Wooden Table -->
-      <rect y="210" width="500" height="90" fill="%2378350F"/>
-      <!-- Traditional Brass Chai Kettle -->
-      <ellipse cx="170" cy="170" rx="55" ry="45" fill="%23D97706"/>
-      <ellipse cx="170" cy="120" rx="30" ry="8" fill="%23B45309"/>
-      <circle cx="170" cy="110" r="7" fill="%23F59E0B"/>
-      <!-- Kettle Handle & Spout -->
-      <path d="M 125 150 C 90 120, 90 90, 150 90 C 210 90, 210 120, 215 150" stroke="%23451A03" stroke-width="10" fill="none"/>
-      <path d="M 215 150 Q 250 140 250 120" stroke="%23D97706" stroke-width="14" fill="none" stroke-linecap="round"/>
-      <!-- Chai Glasses -->
-      <polygon points="320,150 350,150 345,210 325,210" fill="%2393C5FD" opacity="0.8"/>
-      <rect x="323" y="165" width="24" height="40" fill="%23D97706" opacity="0.8"/>
-      <polygon points="370,150 400,150 395,210 375,210" fill="%2393C5FD" opacity="0.8"/>
-      <rect x="373" y="165" width="24" height="40" fill="%23D97706" opacity="0.8"/>
-    </svg>`,
-  },
-  {
-    id: 'transport',
-    name: 'Transport Puzzle',
-    labelKey: 'games.puzzle_categories.transport',
-    defaultLabel: 'Transport Puzzle (साइकिल रिक्शा)',
-    image: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
-      <rect width="500" height="300" fill="%23FEF2F2"/>
-      <!-- Street Road -->
-      <rect y="230" width="500" height="70" fill="%23334155"/>
-      <line x1="0" y1="265" x2="500" y2="265" stroke="%23F8FAFC" stroke-dasharray="25,20" stroke-width="5"/>
-      <!-- Cycle Rickshaw Wheels -->
-      <circle cx="150" cy="225" r="40" fill="none" stroke="%230F172A" stroke-width="8"/>
-      <circle cx="150" cy="225" r="6" fill="%230F172A"/>
-      <circle cx="340" cy="225" r="40" fill="none" stroke="%230F172A" stroke-width="8"/>
-      <circle cx="340" cy="225" r="6" fill="%230F172A"/>
-      <!-- Rickshaw Body & Canopy -->
-      <path d="M 280 215 L 380 215 L 370 150 Q 320 110 260 140 Z" fill="%23DC2626"/>
-      <path d="M 260 140 Q 320 110 380 145" stroke="%23FBBF24" stroke-width="8" fill="none"/>
-      <!-- Front Bicycle Frame -->
-      <line x1="150" y1="225" x2="200" y2="160" stroke="%232563EB" stroke-width="8"/>
-      <line x1="200" y1="160" x2="230" y2="160" stroke="%230F172A" stroke-width="8"/>
-      <line x1="190" y1="180" x2="280" y2="215" stroke="%232563EB" stroke-width="8"/>
-    </svg>`,
-  },
-  {
-    id: 'family',
-    name: 'Family Photo Puzzle',
-    labelKey: 'games.puzzle_categories.family',
-    defaultLabel: 'Family Photo Puzzle (परिवार की तस्वीर पहेली)',
-    isFamilyPhoto: true,
-    image: null,
-  },
-];
-
-// Difficulty configuration: controls exact piece count
-const DIFFICULTY_CONFIG = {
-  easy: { cols: 5, rows: 2, total: 10, label: 'Easy (10 pieces)' },
-  medium: { cols: 5, rows: 3, total: 15, label: 'Medium (15 pieces)' },
-  hard: { cols: 5, rows: 4, total: 20, label: 'Hard (20 pieces)' },
-};
+import { queueOfflineSession } from '../../utils/offlineSync';
+import {
+  PUZZLE_CATEGORIES,
+  DIFFICULTY_PRESETS,
+  renderArtworkToCanvas,
+  sliceMasterCanvas,
+} from './puzzleArtwork';
 
 export default function PuzzleTimeGame() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
 
-  const [difficulty, setDifficulty] = useState('easy'); // 'easy' (10) | 'medium' (15) | 'hard' (20)
+  // Configuration state
+  const [difficulty, setDifficulty] = useState('easy'); // 'easy' (2x2) | 'medium' (3x3) | 'hard' (4x4)
   const [selectedCategoryId, setSelectedCategoryId] = useState('flower');
   const [familyPhotoUrl, setFamilyPhotoUrl] = useState(null);
-  const [pieces, setPieces] = useState([]);
-  const [selectedPieceIndex, setSelectedPieceIndex] = useState(null);
-  const [showReference, setShowReference] = useState(false);
+
+  // Sliced puzzle state
+  const [loadingArtwork, setLoadingArtwork] = useState(true);
+  const [referenceImageUrl, setReferenceImageUrl] = useState(null);
+  const [boardSlots, setBoardSlots] = useState([]); // Array of size total: piece or null
+  const [trayPieces, setTrayPieces] = useState([]); // Array of unplaced pieces
+
+  // Interaction state
+  const [selectedPiece, setSelectedPiece] = useState(null); // { piece, source: 'tray' | 'slot', index }
+  const [draggedItem, setDraggedItem] = useState(null); // { piece, source: 'tray' | 'slot', index }
+  const [touchPos, setTouchPos] = useState(null); // For mobile touch drag preview
+
+  // Session metrics
   const [moves, setMoves] = useState(0);
-  const [gameOver, setGameOver] = useState(false);
+  const [hintsCount, setHintsCount] = useState(0);
   const [startTime, setStartTime] = useState(Date.now());
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+  const [voiceSpoken, setVoiceSpoken] = useState(false);
 
-  // Load family photo for Category 10
+  const masterCanvasRef = useRef(null);
+
+  const currentCategory = PUZZLE_CATEGORIES.find((c) => c.id === selectedCategoryId) || PUZZLE_CATEGORIES[0];
+  const config = DIFFICULTY_PRESETS[difficulty] || DIFFICULTY_PRESETS.easy;
+  const { rows, cols, total } = config;
+
+  // 1. Fetch family member photo if available
   useEffect(() => {
     fetch('/api/family/members', { credentials: 'include' })
       .then((r) => r.json())
@@ -286,127 +76,328 @@ export default function PuzzleTimeGame() {
       .catch(() => {});
   }, []);
 
-  const currentCategory = PUZZLE_CATEGORIES.find((c) => c.id === selectedCategoryId) || PUZZLE_CATEGORIES[3];
-  const activeImage = currentCategory.isFamilyPhoto
-    ? familyPhotoUrl || PUZZLE_CATEGORIES[3].image
-    : currentCategory.image;
-
-  const currentConfig = DIFFICULTY_CONFIG[difficulty];
-
-  // Initialize or reset puzzle
-  const initPuzzle = () => {
-    cancelSpeech();
-    const { cols, rows, total } = currentConfig;
-
-    const original = Array.from({ length: total }, (_, idx) => ({
-      id: idx,
-      targetIndex: idx,
-      targetRow: Math.floor(idx / cols),
-      targetCol: idx % cols,
-    }));
-
-    // Shuffle until not in solved order
-    let shuffled = [...original].sort(() => Math.random() - 0.5);
-    while (shuffled.every((p, idx) => p.targetIndex === idx)) {
-      shuffled = [...original].sort(() => Math.random() - 0.5);
-    }
-
-    setPieces(shuffled);
-    setSelectedPieceIndex(null);
-    setGameOver(false);
-    setMoves(0);
-    setStartTime(Date.now());
-    setElapsedTime(0);
-
-    const isHi = i18n.language.startsWith('hi');
-    const isTa = i18n.language.startsWith('ta');
-    const welcomeVoice = isHi
-      ? `पहेली समय! किसी भी दो टुकड़ों को छूकर उनकी जगह बदलें और तस्वीर पूरी करें।`
-      : isTa
-      ? `புதிர் நேரம்! இரண்டு துண்டுகளைத் தொட்டு மாற்றி படத்தை முடிக்கவும்.`
-      : `Puzzle Time! Tap any two pieces to swap and arrange the picture.`;
-
-    speak(welcomeVoice, { lang: isHi ? 'hi' : isTa ? 'ta' : 'en', rate: 0.75 });
-  };
-
+  // 2. Generate Master Canvas Artwork and Slices
   useEffect(() => {
-    initPuzzle();
-  }, [difficulty, selectedCategoryId, familyPhotoUrl]);
+    let active = true;
+    setLoadingArtwork(true);
 
-  // Elapsed timer
-  useEffect(() => {
-    if (gameOver) return;
-    const interval = setInterval(() => {
-      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [startTime, gameOver]);
+    async function generatePuzzle() {
+      try {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = 600;
+        offscreen.height = 400;
 
-  // Handle piece click/tap to swap
-  const handlePieceClick = (index) => {
-    if (gameOver) return;
+        await renderArtworkToCanvas(offscreen, selectedCategoryId, familyPhotoUrl);
 
-    if (selectedPieceIndex === null) {
-      setSelectedPieceIndex(index);
-    } else if (selectedPieceIndex === index) {
-      // Deselect if tapped again
-      setSelectedPieceIndex(null);
-    } else {
-      // Swap the two pieces
-      const updated = [...pieces];
-      const temp = updated[selectedPieceIndex];
-      updated[selectedPieceIndex] = updated[index];
-      updated[index] = temp;
+        if (!active) return;
 
-      setPieces(updated);
-      setSelectedPieceIndex(null);
-      setMoves((m) => m + 1);
+        const { referenceUrl, pieces } = sliceMasterCanvas(offscreen, rows, cols);
 
-      // Check win condition
-      const isSolved = updated.every((p, idx) => p.targetIndex === idx);
-      if (isSolved) {
-        setGameOver(true);
-        confetti({ particleCount: 90, spread: 70 });
+        setReferenceImageUrl(referenceUrl);
 
+        // Shuffle pieces for the tray
+        let shuffled = [...pieces].sort(() => Math.random() - 0.5);
+        // Ensure not in exact solved order
+        if (shuffled.every((p, idx) => p.targetIndex === idx)) {
+          shuffled = shuffled.reverse();
+        }
+
+        setTrayPieces(shuffled);
+        setBoardSlots(new Array(total).fill(null));
+        setSelectedPiece(null);
+        setMoves(0);
+        setHintsCount(0);
+        setGameOver(false);
+        setStartTime(Date.now());
+        setElapsedTime(0);
+        setLoadingArtwork(false);
+
+        // Warm welcome instruction
         const isHi = i18n.language.startsWith('hi');
         const isTa = i18n.language.startsWith('ta');
-        const winVoice = isHi
-          ? `बधाई हो! आपने पहेली बहुत सुंदर तरीके से सुलझा ली!`
+        const welcomeVoice = isHi
+          ? `पहेली समय! दाईं ओर की पूरी तस्वीर को देखें, और बाईं ओर टुकड़ों को सही जगह पर लगाएं।`
           : isTa
-          ? `வாழ்த்துகள்! நீங்கள் புதிரை அழகாக முடித்துவிட்டீர்கள்!`
-          : `Congratulations! You solved the picture puzzle beautifully!`;
+          ? `புதிர் நேரம்! வலதுபுறம் உள்ள முழு படத்தைப் பார்த்து, இடதுபுறம் துண்டுகளை சரியான இடத்தில் வைக்கவும்.`
+          : `Puzzle Time! Look at the original picture on the right, and arrange the matching pieces on the left.`;
 
-        speak(winVoice, { lang: isHi ? 'hi' : isTa ? 'ta' : 'en', rate: 0.8 });
-
-        // Save session
-        fetch('/api/games/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            clientSessionId: `puzzle-${Date.now()}`,
-            gameType: 'puzzle_time',
-            level: difficulty,
-            step: difficulty === 'easy' ? 'E1' : difficulty === 'medium' ? 'M1' : 'H1',
-            score: difficulty === 'easy' ? 40 : difficulty === 'medium' ? 60 : 80,
-            accuracy: 100,
-            durationSeconds: Math.floor((Date.now() - startTime) / 1000),
-          }),
-        }).catch(() => {});
+        cancelSpeech();
+        speak(welcomeVoice, { lang: isHi ? 'hi' : isTa ? 'ta' : 'en', rate: 0.75 });
+      } catch (err) {
+        console.error('[PuzzleTimeGame] Error generating puzzle:', err);
+        setLoadingArtwork(false);
       }
+    }
+
+    generatePuzzle();
+
+    return () => {
+      active = false;
+      cancelSpeech();
+    };
+  }, [selectedCategoryId, difficulty, familyPhotoUrl]);
+
+  // 3. Elapsed timer
+  useEffect(() => {
+    if (gameOver || loadingArtwork) return;
+    const timer = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [startTime, gameOver, loadingArtwork]);
+
+  // 4. Check Win Condition
+  const checkWinCondition = (currentSlots) => {
+    // Must be completely filled and every piece in targetIndex
+    const allFilled = currentSlots.every((p) => p !== null);
+    if (!allFilled) return false;
+
+    const isMatch = currentSlots.every((p, idx) => p && p.targetIndex === idx);
+    if (isMatch) {
+      setGameOver(true);
+      confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 } });
+
+      const isHi = i18n.language.startsWith('hi');
+      const isTa = i18n.language.startsWith('ta');
+      const winVoice = isHi
+        ? `अद्भुत! आपने तस्वीर को बिल्कुल सही और सुंदर ढंग से पूरा कर लिया!`
+        : isTa
+        ? `அற்புதம்! நீங்கள் படத்தை மிகச் சரியாக முடித்துவிட்டீர்கள்!`
+        : `Magnificent! You arranged the entire picture perfectly!`;
+
+      speak(winVoice, { lang: isHi ? 'hi' : isTa ? 'ta' : 'en', rate: 0.8 });
+
+      // Save session with adaptive tracking
+      const duration = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
+      const sessionData = {
+        clientSessionId: `puzzle-${Date.now()}`,
+        gameType: 'puzzle_time',
+        level: difficulty,
+        step: difficulty === 'easy' ? 'E1' : difficulty === 'medium' ? 'M1' : 'H1',
+        score: difficulty === 'easy' ? 40 : difficulty === 'medium' ? 70 : 100,
+        accuracy: 100,
+        hintsCount,
+        errorsCount: Math.max(0, moves - total),
+        durationSeconds: duration,
+        totalQuestions: total,
+        correctAnswers: total,
+        incorrectAnswers: 0,
+        completionStatus: 'completed',
+      };
+
+      fetch('/api/games/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(sessionData),
+      }).catch(() => {
+        queueOfflineSession(sessionData);
+      });
+    }
+    return isMatch;
+  };
+
+  // 5. Piece Placement & Swapping Logic
+  const placePieceIntoSlot = (pieceItem, targetSlotIndex) => {
+    if (gameOver) return;
+
+    const newSlots = [...boardSlots];
+    const newTray = [...trayPieces];
+    const existingInSlot = newSlots[targetSlotIndex];
+
+    if (pieceItem.source === 'tray') {
+      // Remove from tray
+      const trayIdx = newTray.findIndex((p) => p.id === pieceItem.piece.id);
+      if (trayIdx !== -1) {
+        newTray.splice(trayIdx, 1);
+      }
+      // If target slot had a piece, return it to tray
+      if (existingInSlot) {
+        newTray.push(existingInSlot);
+      }
+      newSlots[targetSlotIndex] = pieceItem.piece;
+    } else if (pieceItem.source === 'slot') {
+      const sourceSlotIndex = pieceItem.index;
+      // Swap slots
+      newSlots[sourceSlotIndex] = existingInSlot;
+      newSlots[targetSlotIndex] = pieceItem.piece;
+    }
+
+    setBoardSlots(newSlots);
+    setTrayPieces(newTray);
+    setSelectedPiece(null);
+    setMoves((m) => m + 1);
+
+    // Supportive feedback on correct placement
+    if (pieceItem.piece.targetIndex === targetSlotIndex) {
+      const isHi = i18n.language.startsWith('hi');
+      const isTa = i18n.language.startsWith('ta');
+      const phrase = isHi ? `शाबाश!` : isTa ? `நன்று!` : `Great placement!`;
+      speak(phrase, { lang: isHi ? 'hi' : isTa ? 'ta' : 'en', rate: 0.85 });
+    }
+
+    checkWinCondition(newSlots);
+  };
+
+  const returnPieceToTray = (pieceItem) => {
+    if (pieceItem.source !== 'slot') return;
+
+    const newSlots = [...boardSlots];
+    const newTray = [...trayPieces];
+
+    newSlots[pieceItem.index] = null;
+    newTray.push(pieceItem.piece);
+
+    setBoardSlots(newSlots);
+    setTrayPieces(newTray);
+    setSelectedPiece(null);
+    setMoves((m) => m + 1);
+  };
+
+  // 6. Accessible Tap-to-Place Handler
+  const handleSlotClick = (slotIndex) => {
+    if (gameOver) return;
+
+    if (selectedPiece) {
+      placePieceIntoSlot(selectedPiece, slotIndex);
+    } else if (boardSlots[slotIndex]) {
+      // Select the piece in this slot
+      setSelectedPiece({
+        piece: boardSlots[slotIndex],
+        source: 'slot',
+        index: slotIndex,
+      });
     }
   };
 
-  const { cols, rows, total } = currentConfig;
+  const handleTrayPieceClick = (piece, index) => {
+    if (gameOver) return;
+
+    if (selectedPiece && selectedPiece.piece.id === piece.id) {
+      setSelectedPiece(null);
+    } else {
+      setSelectedPiece({
+        piece,
+        source: 'tray',
+        index,
+      });
+    }
+  };
+
+  // 7. Hint Helper: Automatically places one misplaced piece into its correct position
+  const handleUseHint = () => {
+    if (gameOver) return;
+
+    // Find first empty or misplaced slot
+    let targetSlot = -1;
+    for (let i = 0; i < total; i++) {
+      if (!boardSlots[i] || boardSlots[i].targetIndex !== i) {
+        targetSlot = i;
+        break;
+      }
+    }
+
+    if (targetSlot === -1) return;
+
+    // Find the piece that belongs in targetSlot
+    // Check in tray first
+    const pieceInTray = trayPieces.find((p) => p.targetIndex === targetSlot);
+    if (pieceInTray) {
+      placePieceIntoSlot({ piece: pieceInTray, source: 'tray' }, targetSlot);
+      setHintsCount((h) => h + 1);
+      return;
+    }
+
+    // Check in another board slot
+    const currentSlotOfPiece = boardSlots.findIndex((p) => p && p.targetIndex === targetSlot);
+    if (currentSlotOfPiece !== -1) {
+      placePieceIntoSlot(
+        { piece: boardSlots[currentSlotOfPiece], source: 'slot', index: currentSlotOfPiece },
+        targetSlot
+      );
+      setHintsCount((h) => h + 1);
+    }
+  };
+
+  // 8. HTML5 Drag and Drop Handlers
+  const handleDragStart = (e, piece, source, index) => {
+    setDraggedItem({ piece, source, index });
+    e.dataTransfer.setData('text/plain', JSON.stringify({ id: piece.id, source, index }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDropOnSlot = (e, slotIndex) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+    placePieceIntoSlot(draggedItem, slotIndex);
+    setDraggedItem(null);
+  };
+
+  const handleDropOnTray = (e) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+    if (draggedItem.source === 'slot') {
+      returnPieceToTray(draggedItem);
+    }
+    setDraggedItem(null);
+  };
+
+  // 9. Mobile Touch Drag Handlers
+  const handleTouchStart = (e, piece, source, index) => {
+    const touch = e.touches[0];
+    setDraggedItem({ piece, source, index });
+    setTouchPos({ x: touch.clientX, y: touch.clientY });
+  };
+
+  const handleTouchMove = (e) => {
+    if (!draggedItem) return;
+    const touch = e.touches[0];
+    setTouchPos({ x: touch.clientX, y: touch.clientY });
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!draggedItem || !touchPos) {
+      setDraggedItem(null);
+      setTouchPos(null);
+      return;
+    }
+
+    // Identify element under drop coordinate
+    const el = document.elementFromPoint(touchPos.x, touchPos.y);
+    const slotEl = el ? el.closest('[data-slot-index]') : null;
+
+    if (slotEl) {
+      const targetSlot = parseInt(slotEl.getAttribute('data-slot-index'), 10);
+      if (!isNaN(targetSlot)) {
+        placePieceIntoSlot(draggedItem, targetSlot);
+      }
+    } else {
+      const trayEl = el ? el.closest('[data-piece-tray]') : null;
+      if (trayEl && draggedItem.source === 'slot') {
+        returnPieceToTray(draggedItem);
+      }
+    }
+
+    setDraggedItem(null);
+    setTouchPos(null);
+  };
+
+  const correctlyPlacedCount = boardSlots.filter((p, idx) => p && p.targetIndex === idx).length;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 md:py-8">
+    <div className="max-w-6xl mx-auto px-4 py-6 md:py-8">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/games')}
-            className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+            className="p-2.5 text-slate-500 hover:text-slate-800 rounded-full hover:bg-slate-100 transition-colors"
+            title="Back to Games"
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
@@ -416,30 +407,30 @@ export default function PuzzleTimeGame() {
               {t(currentCategory.labelKey, currentCategory.defaultLabel)}
             </h1>
             <p className="text-xs text-slate-500">
-              {total} pieces ({difficulty.toUpperCase()}) • Tap any two tiles to swap
+              {config.label} • {t('games.puzzle_instruction', 'Drag or tap pieces into the target board')}
             </p>
           </div>
         </div>
 
         {/* Difficulty Selector */}
-        <div className="flex bg-slate-100 p-1 rounded-2xl self-start sm:self-auto">
-          {Object.entries(DIFFICULTY_CONFIG).map(([lvl, conf]) => (
+        <div className="flex bg-slate-100 p-1 rounded-2xl self-start sm:self-auto border border-slate-200">
+          {Object.entries(DIFFICULTY_PRESETS).map(([lvl, conf]) => (
             <button
               key={lvl}
               onClick={() => setDifficulty(lvl)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-colors ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-all ${
                 difficulty === lvl
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {lvl} ({conf.total}p)
+              {lvl} ({conf.rows}×{conf.cols})
             </button>
           ))}
         </div>
       </div>
 
-      {/* 10 Categories Carousel / Pills */}
+      {/* 10 Categories Carousel */}
       <div className="mb-5 overflow-x-auto pb-2 flex gap-2 scrollbar-none">
         {PUZZLE_CATEGORIES.map((cat) => {
           const isSelected = selectedCategoryId === cat.id;
@@ -460,28 +451,39 @@ export default function PuzzleTimeGame() {
         })}
       </div>
 
-      {/* Controls Bar: Moves, Time, Show Original, Reset */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 mb-5 flex flex-wrap items-center justify-between gap-3 text-xs font-bold">
-        <div className="flex items-center gap-4">
-          <span className="text-slate-600">
-            Moves: <strong className="text-slate-900 text-sm">{moves}</strong>
+      {/* Stats Bar */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 mb-6 flex flex-wrap items-center justify-between gap-3 text-xs font-bold shadow-sm">
+        <div className="flex items-center gap-5">
+          <span className="text-slate-600 flex items-center gap-1.5">
+            <Layers className="w-4 h-4 text-indigo-500" />
+            Placed: <strong className="text-slate-900 text-sm">{correctlyPlacedCount} / {total}</strong>
+          </span>
+          <span className="text-slate-600 flex items-center gap-1.5">
+            <Clock className="w-4 h-4 text-amber-500" />
+            Time: <strong className="text-slate-900 text-sm">{elapsedTime}s</strong>
           </span>
           <span className="text-slate-600">
-            Time: <strong className="text-slate-900 text-sm">{elapsedTime}s</strong>
+            Moves: <strong className="text-slate-900 text-sm">{moves}</strong>
           </span>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowReference(!showReference)}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center gap-1.5"
+            onClick={handleUseHint}
+            disabled={gameOver || correctlyPlacedCount === total}
+            className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl flex items-center gap-1.5 transition-colors disabled:opacity-50"
           >
-            {showReference ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            {showReference ? 'Hide Original' : 'Show Original'}
+            <Lightbulb className="w-3.5 h-3.5" />
+            Hint (संकेत)
           </button>
           <button
-            onClick={initPuzzle}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center gap-1.5"
+            onClick={() => {
+              // Re-shuffle current pieces
+              setTrayPieces([...trayPieces, ...boardSlots.filter(Boolean)].sort(() => Math.random() - 0.5));
+              setBoardSlots(new Array(total).fill(null));
+              setSelectedPiece(null);
+            }}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center gap-1.5 transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Reset
@@ -489,84 +491,261 @@ export default function PuzzleTimeGame() {
         </div>
       </div>
 
-      {/* Reference Image Modal / Preview */}
-      {showReference && (
-        <div className="mb-5 p-3 bg-white rounded-3xl border-2 border-indigo-200 shadow-sm text-center">
-          <span className="text-xs font-bold text-slate-500 block mb-2">Original Reference Picture:</span>
-          <div className="w-full max-w-sm mx-auto h-40 rounded-2xl overflow-hidden border border-slate-200 shadow-inner">
-            <img src={activeImage} alt="Reference" className="w-full h-full object-cover" />
+      {/* RESPONSIVE TWO-PANEL LAYOUT */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT PANEL: Puzzle Board & Pieces Tray */}
+        <div className="lg:col-span-7 space-y-5">
+          {/* 1. Puzzle Target Board */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-indigo-600" />
+                Puzzle Board (पहेली बोर्ड)
+              </h2>
+              <span className="text-xs text-slate-500">
+                {cols}×{rows} Grid ({total} pieces)
+              </span>
+            </div>
+
+            <div
+              className="grid gap-2 sm:gap-2.5 mx-auto w-full aspect-[3/2] rounded-2xl overflow-hidden bg-slate-100 p-2 sm:p-3 border-2 border-slate-300"
+              style={{
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+              }}
+            >
+              {Array.from({ length: total }).map((_, slotIndex) => {
+                const placedPiece = boardSlots[slotIndex];
+                const isSelected = selectedPiece?.source === 'slot' && selectedPiece?.index === slotIndex;
+                const isCorrect = placedPiece && placedPiece.targetIndex === slotIndex;
+
+                return (
+                  <div
+                    key={slotIndex}
+                    data-slot-index={slotIndex}
+                    onClick={() => handleSlotClick(slotIndex)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDropOnSlot(e, slotIndex)}
+                    className={`relative rounded-xl border-2 transition-all flex items-center justify-center cursor-pointer select-none overflow-hidden ${
+                      placedPiece
+                        ? isSelected
+                          ? 'border-indigo-600 ring-4 ring-indigo-400/50 shadow-md scale-102 z-10'
+                          : isCorrect
+                          ? 'border-emerald-500 shadow-sm'
+                          : 'border-slate-300 hover:border-indigo-400'
+                        : selectedPiece
+                        ? 'border-dashed border-indigo-400 bg-indigo-50/50 hover:bg-indigo-100/60'
+                        : 'border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100'
+                    }`}
+                  >
+                    {placedPiece ? (
+                      <div
+                        draggable={true}
+                        onDragStart={(e) => handleDragStart(e, placedPiece, 'slot', slotIndex)}
+                        onTouchStart={(e) => handleTouchStart(e, placedPiece, 'slot', slotIndex)}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        className="w-full h-full relative"
+                      >
+                        <img
+                          src={placedPiece.imgDataUrl}
+                          alt={`Slot ${slotIndex + 1}`}
+                          className="w-full h-full object-cover pointer-events-none"
+                        />
+                        {/* Correct placement badge */}
+                        {isCorrect && (
+                          <div className="absolute top-1.5 right-1.5 bg-emerald-500 text-white p-1 rounded-full shadow-sm">
+                            <Check className="w-3 h-3" />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center p-2">
+                        <span className="text-[11px] font-bold text-slate-400 block">
+                          Slot {slotIndex + 1}
+                        </span>
+                        <span className="text-[9px] text-slate-400">Empty</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. Shuffled Pieces Tray (Bank) */}
+          <div
+            data-piece-tray="true"
+            onDragOver={handleDragOver}
+            onDrop={handleDropOnTray}
+            className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-5 shadow-sm"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                Puzzle Pieces Tray ({trayPieces.length} remaining)
+              </h3>
+              <span className="text-[11px] text-slate-500">
+                Tap or drag a piece to place it
+              </span>
+            </div>
+
+            {trayPieces.length === 0 ? (
+              <div className="p-6 text-center bg-slate-50 rounded-2xl border border-slate-200">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-1.5" />
+                <p className="text-xs font-bold text-slate-700">
+                  All pieces are placed on the board!
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Swap pieces on the board if needed to match the original image.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {trayPieces.map((piece, idx) => {
+                  const isSelected = selectedPiece?.source === 'tray' && selectedPiece?.piece.id === piece.id;
+
+                  return (
+                    <div
+                      key={piece.id}
+                      onClick={() => handleTrayPieceClick(piece, idx)}
+                      draggable={true}
+                      onDragStart={(e) => handleDragStart(e, piece, 'tray', idx)}
+                      onTouchStart={(e) => handleTouchStart(e, piece, 'tray', idx)}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                      className={`relative rounded-2xl aspect-[3/2] overflow-hidden border-2 cursor-pointer transition-all shadow-sm active:scale-95 ${
+                        isSelected
+                          ? 'border-indigo-600 ring-4 ring-indigo-400/60 scale-105 z-10'
+                          : 'border-slate-200 hover:border-indigo-400 hover:shadow-md'
+                      }`}
+                    >
+                      <img
+                        src={piece.imgDataUrl}
+                        alt={`Piece ${piece.id}`}
+                        className="w-full h-full object-cover pointer-events-none"
+                      />
+                      <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
+                        Piece #{idx + 1}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Puzzle Board Grid */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm">
-        <div
-          className="grid gap-1.5 sm:gap-2 mx-auto w-full max-w-xl aspect-[5/3] rounded-2xl overflow-hidden bg-slate-100 p-1.5 sm:p-2 border-2 border-slate-200"
-          style={{
-            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-          }}
-        >
-          {pieces.map((piece, currentSlotIndex) => {
-            const isSelected = selectedPieceIndex === currentSlotIndex;
-            const isCorrectlyPlaced = piece.targetIndex === currentSlotIndex;
+        {/* RIGHT PANEL: Complete Original Reference Image */}
+        <div className="lg:col-span-5 space-y-5">
+          <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm sticky top-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-emerald-600" />
+                Original Reference Image (मूल संदर्भ तस्वीर)
+              </h2>
+              <span className="text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full">
+                Target View
+              </span>
+            </div>
 
-            // Compute background offset for this piece's target position
-            const posX = cols > 1 ? (piece.targetCol / (cols - 1)) * 100 : 0;
-            const posY = rows > 1 ? (piece.targetRow / (rows - 1)) * 100 : 0;
+            {/* Reference Image View */}
+            <div className="w-full aspect-[3/2] rounded-2xl overflow-hidden border-2 border-slate-300 shadow-inner bg-slate-100 relative group">
+              {referenceImageUrl ? (
+                <img
+                  src={referenceImageUrl}
+                  alt={currentCategory.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
+                  Loading picture...
+                </div>
+              )}
+            </div>
 
-            return (
-              <div
-                key={piece.id}
-                onClick={() => handlePieceClick(currentSlotIndex)}
-                className={`relative rounded-xl cursor-pointer transition-all overflow-hidden border-2 select-none active:scale-95 ${
-                  isSelected
-                    ? 'ring-4 ring-indigo-500 border-white z-10 scale-105 shadow-lg'
-                    : isCorrectlyPlaced
-                    ? 'border-emerald-400/80 shadow-sm'
-                    : 'border-white/80 hover:border-indigo-300'
-                }`}
-                style={{
-                  backgroundImage: `url("${activeImage}")`,
-                  backgroundSize: `${cols * 100}% ${rows * 100}%`,
-                  backgroundPosition: `${posX}% ${posY}%`,
-                }}
-              >
-                {/* Subtle indicator when piece is in its correct place */}
-                {isCorrectlyPlaced && !gameOver && (
-                  <div className="absolute top-1 right-1 w-3 h-3 bg-emerald-500 rounded-full border border-white shadow" />
-                )}
-              </div>
-            );
-          })}
+            {/* Cultural Caption & Guidance */}
+            <div className="mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+              <p className="text-xs font-bold text-slate-700">
+                {currentCategory.description}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Keep your eye on this complete picture while placing the puzzle pieces on the left!
+              </p>
+            </div>
+
+            {/* Accessible Audio Instruction button */}
+            <button
+              onClick={() => {
+                const isHi = i18n.language.startsWith('hi');
+                const isTa = i18n.language.startsWith('ta');
+                const msg = isHi
+                  ? `यह ${currentCategory.defaultLabel} की तस्वीर है। टुकड़ों को इसी तरह मिलाकर पूरा करें।`
+                  : isTa
+                  ? `இது ${currentCategory.name} படம். அதே போல் துண்டுகளைச் சேர்த்து முடிக்கவும்.`
+                  : `This is the complete ${currentCategory.name}. Look closely at the shapes and arrange your pieces to match.`;
+                cancelSpeech();
+                speak(msg, { lang: isHi ? 'hi' : isTa ? 'ta' : 'en', rate: 0.75 });
+              }}
+              className="mt-4 w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+            >
+              <Volume2 className="w-4 h-4" />
+              Listen to Guidance (मार्गदर्शन सुनें)
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* Floating Touch Drag Indicator for Mobile/Tablet */}
+      {draggedItem && touchPos && (
+        <div
+          className="fixed pointer-events-none z-50 w-24 h-16 rounded-xl overflow-hidden border-2 border-indigo-500 shadow-2xl scale-110 opacity-90"
+          style={{
+            left: `${touchPos.x - 48}px`,
+            top: `${touchPos.y - 32}px`,
+          }}
+        >
+          <img src={draggedItem.piece.imgDataUrl} alt="Moving" className="w-full h-full object-cover" />
+        </div>
+      )}
+
       {/* Completion Modal */}
       {gameOver && (
-        <div className="mt-6 p-6 bg-emerald-50 border-2 border-emerald-300 rounded-3xl text-center space-y-4 shadow-lg animate-fade-in">
-          <Trophy className="w-16 h-16 text-amber-500 mx-auto" />
-          <h2 className="text-2xl font-black text-slate-800">Puzzle Solved Beautifully!</h2>
-          <p className="text-xs text-slate-600 max-w-md mx-auto">
-            You completed the <strong>{currentCategory.name}</strong> ({difficulty.toUpperCase()} • {total} pieces)
-            in <strong>{moves} moves</strong> and <strong>{elapsedTime} seconds</strong>!
+        <div className="mt-8 p-6 sm:p-8 bg-emerald-50 border-2 border-emerald-400 rounded-3xl text-center space-y-4 shadow-xl animate-fade-in max-w-xl mx-auto">
+          <Trophy className="w-16 h-16 text-amber-500 mx-auto animate-bounce" />
+          <h2 className="text-2xl font-black text-slate-800">
+            Puzzle Solved Beautifully! (पहेली हल हो गई!)
+          </h2>
+          <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+            You completed <strong>{currentCategory.name}</strong> ({difficulty.toUpperCase()} • {total} pieces)
+            in <strong>{moves} moves</strong> and <strong>{elapsedTime} seconds</strong> with {hintsCount} hints.
           </p>
+
           <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
             <button
-              onClick={initPuzzle}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-2xl text-xs shadow-md"
+              onClick={() => {
+                // Re-init current category
+                setBoardSlots(new Array(total).fill(null));
+                setTrayPieces([...trayPieces, ...boardSlots.filter(Boolean)].sort(() => Math.random() - 0.5));
+                setMoves(0);
+                setHintsCount(0);
+                setGameOver(false);
+                setStartTime(Date.now());
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-2xl text-xs shadow-md transition-colors"
             >
-              Play Again
+              Play Again (फिर से खेलें)
             </button>
             <button
               onClick={() => {
-                const nextIdx = (PUZZLE_CATEGORIES.findIndex((c) => c.id === selectedCategoryId) + 1) % PUZZLE_CATEGORIES.length;
+                const nextIdx =
+                  (PUZZLE_CATEGORIES.findIndex((c) => c.id === selectedCategoryId) + 1) %
+                  PUZZLE_CATEGORIES.length;
                 setSelectedCategoryId(PUZZLE_CATEGORIES[nextIdx].id);
               }}
-              className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold py-3 px-6 rounded-2xl text-xs"
+              className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold py-3 px-6 rounded-2xl text-xs transition-colors"
             >
-              Next Picture ➔
+              Next Picture (अगली तस्वीर) ➔
             </button>
           </div>
         </div>
