@@ -49,20 +49,44 @@ export default function GamesHub() {
 
   const allGames = [
     {
+      id: 'name_face',
+      title: t('games.name_face_title', 'Name & Face Memory (परिवार की यादें)'),
+      desc: t('games.name_face_desc', 'Recognize beloved family members and photographs'),
+      icon: Users,
+      path: '/games/name-face',
+      color: 'bg-rose-50 border-rose-200 text-rose-700',
+    },
+    {
+      id: 'whose_voice',
+      title: t('games.family_voice_title', 'Family Voice Memory (परिवार की आवाज़ें)'),
+      desc: t('games.family_voice_desc', 'Recognize beloved family members from their real voice recordings'),
+      icon: Mic,
+      path: '/games/whose-voice',
+      color: 'bg-purple-50 border-purple-200 text-purple-700',
+    },
+    {
+      id: 'bingo',
+      title: t('games.bingo_title', 'Bingo Game (बिंगो खेल)'),
+      desc: t('games.bingo_desc', 'Interactive number and pattern matching with voice callouts'),
+      icon: Star,
+      path: '/games/bingo',
+      color: 'bg-amber-50 border-amber-200 text-amber-700',
+    },
+    {
+      id: 'puzzle_time',
+      title: 'Puzzle Time (10 तस्वीर पहेलियाँ)',
+      desc: '10 categories: Birds, Vegetables, Fruits, Flowers, Temples, Animals & Family',
+      icon: Grid,
+      path: '/games/puzzle-time',
+      color: 'bg-blue-50 border-blue-200 text-blue-700',
+    },
+    {
       id: 'memory_match',
       title: t('games.remember_objects_title', 'Memory Match (वस्तुएं याद रखें)'),
       desc: t('games.remember_objects_desc', 'Memorize objects shown and identify them'),
       icon: Eye,
       path: '/games/memory-match',
       color: 'bg-teal-50 border-teal-200 text-teal-700',
-    },
-    {
-      id: 'memory_lane',
-      title: t('games.name_face_title', 'Memory Lane (परिवार की यादें)'),
-      desc: t('games.name_face_desc', 'Recognize beloved family members and photographs'),
-      icon: Users,
-      path: '/games/memory-lane',
-      color: 'bg-rose-50 border-rose-200 text-rose-700',
     },
     {
       id: 'find_pair',
@@ -78,7 +102,7 @@ export default function GamesHub() {
       desc: t('games.routine_recall_desc', 'Order your day: morning tea, medicines, walk, meals'),
       icon: Clock,
       path: '/games/daily-routine',
-      color: 'bg-amber-50 border-amber-200 text-amber-700',
+      color: 'bg-orange-50 border-orange-200 text-orange-700',
     },
     {
       id: 'word_wizard',
@@ -95,22 +119,6 @@ export default function GamesHub() {
       icon: Sparkles,
       path: '/games/sort-it-out',
       color: 'bg-indigo-50 border-indigo-200 text-indigo-700',
-    },
-    {
-      id: 'music_memories',
-      title: t('games.whose_voice_title', 'Music Memories (संगीत और स्वर)'),
-      desc: t('games.whose_voice_desc', 'Recognize cultural melodies and loving family voices'),
-      icon: Music,
-      path: '/games/music-memories',
-      color: 'bg-purple-50 border-purple-200 text-purple-700',
-    },
-    {
-      id: 'puzzle_time',
-      title: t('games.pattern_game_title', 'Puzzle Time (तस्वीर पहेली)'),
-      desc: t('games.pattern_game_desc', 'Complete visual tile puzzles with large friendly pieces'),
-      icon: Grid,
-      path: '/games/puzzle-time',
-      color: 'bg-blue-50 border-blue-200 text-blue-700',
     },
   ];
 

@@ -7,19 +7,81 @@
   color-scheme: light;
 }
 
-body {
+html, body {
   margin: 0;
   padding: 0;
+  max-width: 100vw;
+  overflow-x: hidden;
   background-color: #FAF5EF; /* Warm elder-friendly background */
   color: #0F172A;
   min-height: 100vh;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Responsive typography clamp styles */
+h1 {
+  font-size: clamp(1.25rem, 3.5vw, 2rem);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: clamp(1.1rem, 2.8vw, 1.6rem);
+  line-height: 1.3;
+}
+
+h3 {
+  font-size: clamp(0.95rem, 2.2vw, 1.3rem);
+  line-height: 1.35;
+}
+
+p, span, label, input, select, button {
+  font-size: clamp(0.85rem, 1.6vw, 1.05rem);
+}
+
+/* Ensure images, svgs, and videos never exceed their container */
+img, svg, canvas, video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Big touch target styling (Responsive clamp: 52px on mobile to 68px on desktop) */
+.btn-elder {
+  min-height: clamp(52px, 8vw, 68px);
+  padding: clamp(0.6rem, 2vw, 1rem) clamp(0.9rem, 3vw, 1.5rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: clamp(1rem, 2.5vw, 1.5rem);
+  font-weight: 700;
+  font-size: clamp(0.95rem, 1.8vw, 1.25rem);
+  line-height: 1.3;
+  text-align: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.btn-elder:active {
+  transform: scale(0.97);
+}
+
+/* Soft glass cards */
+.elder-card {
+  background: #FFFFFF;
+  border-radius: clamp(1rem, 2vw, 1.5rem);
+  border: 1.5px solid #E2E8F0;
+  box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.04);
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Elder Accessibility overrides */
 .elder-mode {
-  font-size: 20px;
+  font-size: clamp(1rem, 2.2vw, 1.25rem);
 }
 
 .high-contrast {
@@ -35,33 +97,7 @@ body {
 }
 
 .high-contrast button {
-  border: 3px solid #FBBF24 !important;
-}
-
-/* Big touch target styling (at least 72px) */
-.btn-elder {
-  min-height: 72px;
-  min-width: 72px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 1.25rem;
-  font-weight: 700;
-  font-size: 1.35rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-}
-
-.btn-elder:active {
-  transform: scale(0.97);
-}
-
-/* Soft glass cards */
-.elder-card {
-  background: #FFFFFF;
-  border-radius: 1.5rem;
-  border: 2px solid #E2E8F0;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  border: 2px solid #FBBF24 !important;
 }
 
 /* Pulsing SOS ring animation */
@@ -70,7 +106,7 @@ body {
     box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
   }
   70% {
-    box-shadow: 0 0 0 20px rgba(220, 38, 38, 0);
+    box-shadow: 0 0 0 16px rgba(220, 38, 38, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);

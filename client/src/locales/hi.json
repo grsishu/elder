@@ -224,7 +224,23 @@
     "item_flower": "फूल",
     "item_green_leaf": "हरा पत्ता",
     "item_mango": "आम",
-    "item_lamp": "दीपक"
+    "item_lamp": "दीपक",
+    "family_voice_title": "परिवार की आवाज़ें (Family Voice Memory)",
+    "family_voice_desc": "अपने प्रियजनों की असली आवाज़ सुनकर उन्हें पहचानें",
+    "bingo_title": "बिंगो (Bingo Game)",
+    "bingo_desc": "आवाज़ सुनकर बिंगो नंबर और पैटर्न पूरा करें",
+    "puzzle_categories": {
+      "bird": "पक्षी पहेली (Bird)",
+      "vegetable": "सब्ज़ी पहेली (Vegetable)",
+      "fruit": "फल पहेली (Fruit)",
+      "flower": "फूल पहेली (Flower)",
+      "temple": "मंदिर एवं पारंपरिक वस्तुएं (Temple)",
+      "animal": "पशु पहेली (Animal)",
+      "nature": "प्रकृति पहेली (Nature)",
+      "household": "घरेलू वस्तुएं (Household)",
+      "transport": "वाहन पहेली (Transport)",
+      "family": "परिवार की तस्वीर पहेली (Family Photo)"
+    }
   },
   "reminders": {
     "title": "दैनिक याद दिलाना",
@@ -466,5 +482,16 @@
     "speak_help": "बोलें 'मुझे रास्ता बताओ' या मंज़िल चुनें",
     "voice_listening": "सुन रहे हैं...",
     "voice_not_supported": "इस ब्राउज़र में आवाज़ पहचान समर्थित नहीं है"
+  },
+  "relationships": {
+    "son": "बेटा",
+    "daughter": "बेटी",
+    "grandson": "पोता",
+    "granddaughter": "पोती",
+    "wife": "पत्नी",
+    "husband": "पति",
+    "brother": "भाई",
+    "sister": "बहन",
+    "other": "अन्य परिजन"
   }
 }

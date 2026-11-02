@@ -26,12 +26,19 @@ export default function Home() {
   const elderName = elder?.name || (isHindi ? 'रामेश्वर' : 'Ramesh');
 
   useEffect(() => {
+    // If profile is incomplete, automatically route to setup wizard
+    const isComplete = elder?.profile_completed || localStorage.getItem('smriti_profile_complete') === 'true';
+    if (elder && !isComplete && (!elder.name || elder.profile_completed === false)) {
+      navigate('/wizard');
+      return;
+    }
+
     // Speak slow greeting upon arriving at Home
     speak(t('home.greeting', { name: elderName }), {
       lang: isHindi ? 'hi' : 'en',
       rate: 0.65,
     });
-  }, [elderName, isHindi]);
+  }, [elder, elderName, isHindi, navigate, t]);
 
   const cards = [
     {
@@ -140,14 +147,14 @@ export default function Home() {
               speak(card.title, { lang: isHindi ? 'hi' : 'en', rate: 0.65 });
               navigate(card.route);
             }}
-            className={`btn-elder ${card.color} border-2 p-5 rounded-3xl shadow-sm flex items-center justify-between transition-all hover:scale-[1.02] active:scale-95 text-left`}
+            className={`btn-elder ${card.color} border-2 p-4 sm:p-5 rounded-3xl shadow-sm flex items-center justify-between transition-all hover:scale-[1.02] active:scale-95 text-left w-full`}
           >
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/80 rounded-2xl shadow-sm shrink-0">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div className="p-2.5 sm:p-3 bg-white/80 rounded-2xl shadow-sm shrink-0">
                 {card.icon}
               </div>
-              <div>
-                <span className="text-xl sm:text-2xl font-black block leading-tight">
+              <div className="min-w-0">
+                <span className="text-base sm:text-lg md:text-xl font-black block leading-tight truncate-words">
                   {card.title}
                 </span>
               </div>

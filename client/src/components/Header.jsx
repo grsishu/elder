@@ -60,10 +60,10 @@ export default function Header({ currentScreenText }) {
   };
 
   return (
-    <header className="bg-white border-b-2 border-slate-200 px-4 py-3 sticky top-0 z-40 shadow-sm">
-      <div className="max-w-4xl mx-auto flex items-center justify-between">
+    <header className="bg-white border-b-2 border-slate-200 px-3 sm:px-4 py-2.5 sm:py-3 sticky top-0 z-40 shadow-sm">
+      <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
         {/* App Title with 3-second press handler for Caregivers */}
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <div
             id="app-header-title"
             onMouseDown={startLongPress}
@@ -74,16 +74,16 @@ export default function Header({ currentScreenText }) {
             className="cursor-pointer select-none active:opacity-80"
             title={t('home.helper_hint')}
           >
-            <h1 className="text-2xl md:text-3xl font-black text-amber-700 tracking-tight flex items-center gap-2">
-              <span className="text-3xl">🪷</span>
+            <h1 className="text-lg sm:text-2xl font-black text-amber-700 tracking-tight flex items-center gap-1.5">
+              <span className="text-xl sm:text-2xl">🪷</span>
               <span>{t('app.title')}</span>
             </h1>
-            <p className="text-xs text-slate-500 font-medium hidden sm:block">
+            <p className="text-[11px] text-slate-500 font-medium hidden sm:block">
               {t('home.helper_hint')}
             </p>
           </div>
           {pressProgress > 0 && (
-            <div className="absolute -bottom-2 left-0 w-full h-1 bg-slate-200 rounded-full overflow-hidden">
+            <div className="absolute -bottom-1.5 left-0 w-full h-1 bg-slate-200 rounded-full overflow-hidden">
               <div
                 className="h-full bg-amber-600 transition-all duration-75"
                 style={{ width: `${pressProgress}%` }}
@@ -93,31 +93,30 @@ export default function Header({ currentScreenText }) {
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Speaker Button: Hear Screen Aloud */}
           <button
             id="header-speak-button"
             onClick={handleSpeakCurrentScreen}
-            className="btn-elder p-3 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-2xl flex items-center gap-1.5 text-base font-bold shadow-sm"
+            className="p-2 sm:p-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-2xl flex items-center gap-1.5 text-xs sm:text-sm font-bold shadow-sm transition-transform active:scale-95"
             aria-label={t('common.hear_again')}
           >
-            <Volume2 className="w-7 h-7 text-amber-800" />
+            <Volume2 className="w-5 h-5 text-amber-800" />
             <span className="hidden md:inline">{t('common.hear_again')}</span>
           </button>
 
           {/* Language Selector */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-300">
+          <div className="flex items-center bg-slate-100 p-0.5 sm:p-1 rounded-2xl border border-slate-300">
             {[
               { code: 'en', label: 'EN' },
               { code: 'hi', label: 'हिन्दी' },
-              { code: 'as', label: 'অসমীয়া' },
-              { code: 'bn', label: 'বাংলা' },
+              { code: 'ta', label: 'தமிழ்' },
             ].map(lang => (
               <button
                 key={lang.code}
                 id={`lang-btn-${lang.code}`}
                 onClick={() => handleLanguageChange(lang.code)}
-                className={`px-3 py-1.5 rounded-xl text-sm font-bold transition-all ${
+                className={`px-2 sm:px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${
                   i18n.language === lang.code
                     ? 'bg-amber-600 text-white shadow-sm'
                     : 'text-slate-700 hover:bg-slate-200'
@@ -132,7 +131,7 @@ export default function Header({ currentScreenText }) {
           <button
             id="header-settings-btn"
             onClick={() => setHelperMenuOpen(true)}
-            className="p-3 text-slate-600 hover:bg-slate-100 rounded-2xl border border-slate-200"
+            className="p-2 sm:p-2.5 text-slate-600 hover:bg-slate-100 rounded-2xl border border-slate-200"
             title={t('home.helper_menu_title')}
             aria-label="Caregiver settings"
           >

@@ -84,7 +84,8 @@ router.get('/current', requireAuth, async (req, res) => {
 
   const elderData = await query(
     `SELECT id, name, age, language, region, voice_speed, routine_drift_enabled,
-            auto_lost_enabled, auto_lost_threshold_m, last_known_lat, last_known_lng, last_known_at
+            auto_lost_enabled, auto_lost_threshold_m, last_known_lat, last_known_lng, last_known_at,
+            profile_completed
      FROM elders WHERE id = $1`,
     [req.elder.id]
   );

@@ -226,7 +226,23 @@
     "item_flower": "फूल",
     "item_green_leaf": "हरा पत्ता",
     "item_mango": "आम",
-    "item_lamp": "दीपक"
+    "item_lamp": "दीपक",
+    "family_voice_title": "Family Voice Memory",
+    "family_voice_desc": "Recognize beloved family members from their real voice recordings",
+    "bingo_title": "Bingo Game",
+    "bingo_desc": "Interactive number and pattern matching with voice callouts",
+    "puzzle_categories": {
+      "bird": "Bird Puzzle",
+      "vegetable": "Vegetable Puzzle",
+      "fruit": "Fruit Puzzle",
+      "flower": "Flower Puzzle",
+      "temple": "Temple & Traditional Objects",
+      "animal": "Animal Puzzle",
+      "nature": "Nature Puzzle",
+      "household": "Household Objects Puzzle",
+      "transport": "Transport Puzzle",
+      "family": "Family Photo Puzzle"
+    }
   },
   "reminders": {
     "title": "दैनिक याद दिलाना",
@@ -468,5 +484,16 @@
     "speak_help": "'ਮੈਨੂੰ ਰਸਤਾ ਦੱਸੋ' ਕਹੋ ਜਾਂ ਮੰਜ਼ਿਲ ਚੁਣੋ",
     "voice_listening": "ਸੁਣ ਰਿਹਾ ਹੈ...",
     "voice_not_supported": "ਆਵਾਜ਼ ਪਛਾਣ ਸਮਰਥਿਤ ਨਹੀਂ ਹੈ"
+  },
+  "relationships": {
+    "son": "ਪੁੱਤਰ",
+    "daughter": "ਧੀ",
+    "grandson": "ਪੋਤਾ",
+    "granddaughter": "ਪੋਤੀ",
+    "wife": "ਪਤਨੀ",
+    "husband": "ਪਤੀ",
+    "brother": "ਭਰਾ",
+    "sister": "ਭੈਣ",
+    "other": "ਹੋਰ ਪਰਿਵਾਰਕ ਮੈਂਬਰ"
   }
 }

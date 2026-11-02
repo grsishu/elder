@@ -589,7 +589,7 @@ export default function CaregiverDashboard() {
               { id: 'picture_matching', name: 'Memory Match', score: '95%' },
               { id: 'remember_objects', name: 'Remember Objects', score: '90%' },
               { id: 'name_face', name: 'Name & Face', score: '100%' },
-              { id: 'pattern_game', name: 'Pattern Sequence', score: '88%' },
+              { id: 'bingo', name: 'Bingo Practice', score: '92%' },
               { id: 'find_object', name: 'Find the Object', score: '92%' },
               { id: 'daily_routine', name: 'Daily Routine Recall', score: '100%' },
             ].map((game) => (

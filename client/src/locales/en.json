@@ -224,7 +224,23 @@
     "item_flower": "Flower",
     "item_green_leaf": "Green Leaf",
     "item_mango": "Mango",
-    "item_lamp": "Table Lamp"
+    "item_lamp": "Table Lamp",
+    "family_voice_title": "Family Voice Memory",
+    "family_voice_desc": "Recognize beloved family members from their real voice recordings",
+    "bingo_title": "Bingo Game",
+    "bingo_desc": "Interactive number and pattern matching with voice callouts",
+    "puzzle_categories": {
+      "bird": "Bird Puzzle",
+      "vegetable": "Vegetable Puzzle",
+      "fruit": "Fruit Puzzle",
+      "flower": "Flower Puzzle",
+      "temple": "Temple & Traditional Objects",
+      "animal": "Animal Puzzle",
+      "nature": "Nature Puzzle",
+      "household": "Household Objects Puzzle",
+      "transport": "Transport Puzzle",
+      "family": "Family Photo Puzzle"
+    }
   },
   "reminders": {
     "title": "Daily Reminders",
@@ -466,5 +482,16 @@
     "speak_help": "Say 'I am lost' or tap your destination",
     "voice_listening": "Listening...",
     "voice_not_supported": "Voice recognition not supported in this browser"
+  },
+  "relationships": {
+    "son": "Son",
+    "daughter": "Daughter",
+    "grandson": "Grandson",
+    "granddaughter": "Granddaughter",
+    "wife": "Wife",
+    "husband": "Husband",
+    "brother": "Brother",
+    "sister": "Sister",
+    "other": "Other Family Member"
   }
 }

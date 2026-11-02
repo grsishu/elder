@@ -557,7 +557,7 @@ router.post('/step-8/health', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/wizard/step-9/consent - Privacy Consent
+// POST /api/wizard/step-9/consent - Privacy Consent & Completion
 router.post('/step-9/consent', requireAuth, async (req, res) => {
   try {
     const elder = await getOrCreateElder(req.user.user_id);
@@ -575,7 +575,27 @@ router.post('/step-9/consent', requireAuth, async (req, res) => {
       [elder.id, Boolean(shareLocation), Boolean(shareHealth), Boolean(shareProgress)]
     );
 
-    return res.json({ success: true, consent: up.rows[0] });
+    // Mark elder profile complete
+    await query(
+      `UPDATE elders SET profile_completed = TRUE, updated_at = NOW() WHERE id = $1`,
+      [elder.id]
+    );
+
+    return res.json({ success: true, consent: up.rows[0], profile_completed: true });
+  } catch (err) {
+    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+  }
+});
+
+// POST /api/wizard/complete - Mark setup wizard complete
+router.post('/complete', requireAuth, async (req, res) => {
+  try {
+    const elder = await getOrCreateElder(req.user.user_id);
+    await query(
+      `UPDATE elders SET profile_completed = TRUE, updated_at = NOW() WHERE id = $1`,
+      [elder.id]
+    );
+    return res.json({ success: true, profile_completed: true, message: 'Setup completed successfully!' });
   } catch (err) {
     return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
   }

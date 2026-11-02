@@ -29,7 +29,8 @@ export async function authMiddleware(req, res, next) {
     // Also look up any elder profile linked directly or through elder_caregivers
     const elderRes = await query(
       `SELECT id, name, age, language, region, voice_speed, routine_drift_enabled,
-              auto_lost_enabled, auto_lost_threshold_m, last_known_lat, last_known_lng
+              auto_lost_enabled, auto_lost_threshold_m, last_known_lat, last_known_lng,
+              profile_completed
        FROM elders
        WHERE user_id = $1
        LIMIT 1`,
@@ -41,7 +42,7 @@ export async function authMiddleware(req, res, next) {
     } else {
       // Check caregiver links
       const caregiverRes = await query(
-        `SELECT e.id, e.name, e.age, e.language, e.region, e.voice_speed
+        `SELECT e.id, e.name, e.age, e.language, e.region, e.voice_speed, e.profile_completed
          FROM elder_caregivers ec
          JOIN elders e ON ec.elder_id = e.id
          WHERE ec.caregiver_id = $1 AND ec.status = 'active'

@@ -16,26 +16,16 @@ export default function Family() {
 
   const fetchFamilyData = () => {
     Promise.all([
-      fetch('/api/wizard/state', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
-      fetch('/api/family/photos', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
+      fetch('/api/family/members', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
       fetch('/api/reports/weekly', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
+      fetch('/api/elder/current', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
     ])
-      .then(([wData, pData, rData]) => {
-        if (wData.success) {
-          setElder(wData.elder);
-          let list = wData.family || [];
-          if (pData.photos && pData.photos.length > 0) {
-            const extra = pData.photos.map((p) => ({
-              id: p.id,
-              name: p.member_name,
-              relationship: p.relationship,
-              photo_url: `/api/family/photos/${p.id}/file`,
-              has_photo: true,
-              phone: '+91 98765 00000',
-            }));
-            list = [...list, ...extra];
-          }
-          setFamily(list);
+      .then(([mRes, rData, eData]) => {
+        if (mRes.success && mRes.members) {
+          setFamily(mRes.members);
+        }
+        if (eData.elder) {
+          setElder(eData.elder);
         }
         if (rData.reports) {
           setWeeklyReports(rData.reports);
@@ -66,20 +56,22 @@ export default function Family() {
   };
 
   const playVoice = (member) => {
-    if (member.has_voice) {
+    const relText = t(`relationships.${member.relationship?.toLowerCase()}`, member.relationship);
+    if (member.hasVoice || member.has_voice) {
       setPlayingVoiceId(member.id);
-      const audio = new Audio(`/api/elder/${elder.id}/family/${member.id}/voice`);
+      const audioUrl = member.voiceUrl || `/api/family/members/${member.id}/voice`;
+      const audio = new Audio(audioUrl);
       audio.onended = () => setPlayingVoiceId(null);
       audio.onerror = () => {
         setPlayingVoiceId(null);
-        speak(`Namaskar from ${member.name}, your loving ${member.relationship}.`, { lang: 'en' });
+        speak(`Namaskar from ${member.name}, your loving ${relText}.`, { lang: 'en', rate: 0.8 });
       };
       audio.play().catch(() => {
         setPlayingVoiceId(null);
-        speak(`Namaskar from ${member.name}, your loving ${member.relationship}.`, { lang: 'en' });
+        speak(`Namaskar from ${member.name}, your loving ${relText}.`, { lang: 'en', rate: 0.8 });
       });
     } else {
-      speak(`Namaskar from ${member.name}, your loving ${member.relationship}.`, { lang: 'en' });
+      speak(`Namaskar from ${member.name}, your loving ${relText}.`, { lang: 'en', rate: 0.8 });
     }
   };
 
@@ -176,11 +168,14 @@ export default function Family() {
                 onClick={() => playVoice(member)}
                 className="relative h-48 bg-slate-100 flex items-center justify-center cursor-pointer group"
               >
-                {member.has_photo ? (
+                {member.hasPhoto || member.has_photo ? (
                   <img
-                    src={`/api/elder/${elder.id}/family/${member.id}/photo`}
+                    src={member.photoUrl || `/api/family/members/${member.id}/photo`}
                     alt={member.name}
                     className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
                   />
                 ) : (
                   <div className="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-2xl">
@@ -206,7 +201,9 @@ export default function Family() {
               <div className="p-5 flex-1 flex flex-col justify-between">
                 <div>
                   <h3 className="text-xl font-black text-slate-800">{member.name}</h3>
-                  <p className="text-sm text-indigo-600 font-bold mb-2">{member.relationship}</p>
+                  <p className="text-sm text-indigo-600 font-bold mb-2">
+                    {t(`relationships.${member.relationship?.toLowerCase()}`, member.relationship)}
+                  </p>
                   {member.address && <p className="text-xs text-slate-500 mb-4">{member.address}</p>}
                 </div>
 

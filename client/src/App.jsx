@@ -30,7 +30,7 @@ import NameFaceGame from './pages/games/NameFaceGame';
 import WhoseVoiceGame from './pages/games/WhoseVoiceGame';
 import PictureMatchingGame from './pages/games/PictureMatchingGame';
 import RememberObjectsGame from './pages/games/RememberObjectsGame';
-import PatternGame from './pages/games/PatternGame';
+import BingoGame from './pages/games/BingoGame';
 import FindObjectGame from './pages/games/FindObjectGame';
 import DailyRoutineGame from './pages/games/DailyRoutineGame';
 import VoiceFluencyGame from './pages/games/VoiceFluencyGame';
@@ -179,10 +179,10 @@ function MainLayout() {
             }
           />
           <Route
-            path="/games/pattern"
+            path="/games/bingo"
             element={
               <RequireAuth>
-                <PatternGame />
+                <BingoGame />
               </RequireAuth>
             }
           />
@@ -204,6 +204,14 @@ function MainLayout() {
           />
           <Route
             path="/games/whose-voice"
+            element={
+              <RequireAuth>
+                <WhoseVoiceGame />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/games/family-voice"
             element={
               <RequireAuth>
                 <WhoseVoiceGame />

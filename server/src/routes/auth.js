@@ -249,7 +249,7 @@ router.post('/verify-otp', async (req, res) => {
 
     // Check if elder profile exists
     const elderRes = await query(
-      `SELECT id, name, age, language, region, voice_speed
+      `SELECT id, name, age, language, region, voice_speed, profile_completed
        FROM elders WHERE user_id = $1 LIMIT 1`,
       [user.id]
     );

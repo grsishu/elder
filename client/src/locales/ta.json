@@ -226,7 +226,23 @@
     "item_flower": "फूल",
     "item_green_leaf": "हरा पत्ता",
     "item_mango": "आम",
-    "item_lamp": "दीपक"
+    "item_lamp": "दीपक",
+    "family_voice_title": "குடும்பக் குரல் நினைவகம் (Family Voice)",
+    "family_voice_desc": "உண்மையான குடும்பக் குரல்களைக் கேட்டு அடையாளம் காணுங்கள்",
+    "bingo_title": "பிங்கோ (Bingo Game)",
+    "bingo_desc": "குரல் அறிவிப்புகளுடன் எண்களைத் தேர்ந்தெடுக்கவும்",
+    "puzzle_categories": {
+      "bird": "பறவை புதிர் (Bird)",
+      "vegetable": "காய்கறி புதிர் (Vegetable)",
+      "fruit": "பழம் புதிர் (Fruit)",
+      "flower": "மலர் புதிர் (Flower)",
+      "temple": "கோவில் மற்றும் பாரம்பரிய பொருட்கள் (Temple)",
+      "animal": "விலங்கு புதிர் (Animal)",
+      "nature": "இயற்கை புதிர் (Nature)",
+      "household": "வீட்டுப் பொருட்கள் (Household)",
+      "transport": "போக்குவரத்து புதிர் (Transport)",
+      "family": "குடும்பப் புகைப்பட புதிர் (Family Photo)"
+    }
   },
   "reminders": {
     "title": "दैनिक याद दिलाना",
@@ -468,5 +484,16 @@
     "speak_help": "'வழி காட்டு' என்று சொல்லுங்கள் அல்லது இடத்தை தொடுங்கள்",
     "voice_listening": "கவனிக்கிறது...",
     "voice_not_supported": "குரல் அங்கீகாரம் ஆதரிக்கப்படவில்லை"
+  },
+  "relationships": {
+    "son": "மகன்",
+    "daughter": "மகள்",
+    "grandson": "பேரன்",
+    "granddaughter": "பேத்தி",
+    "wife": "மனைவி",
+    "husband": "கணவர்",
+    "brother": "சகோதரர்",
+    "sister": "சகோதரி",
+    "other": "மற்ற குடும்ப உறுப்பினர்"
   }
 }

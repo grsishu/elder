@@ -23,13 +23,14 @@ export default function Login() {
 
   const otpInputsRef = useRef([]);
 
-  // If already logged in with elder, redirect home; else to onboarding
+  // Auto-redirect: If profile complete -> Home, else automatically open Setup Wizard
   useEffect(() => {
     if (user) {
-      if (elder?.name) {
+      const isComplete = elder?.profile_completed || localStorage.getItem('smriti_profile_complete') === 'true';
+      if (elder?.name && isComplete) {
         navigate('/');
       } else {
-        navigate('/onboarding');
+        navigate('/wizard');
       }
     }
   }, [user, elder, navigate]);

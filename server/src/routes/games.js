@@ -123,13 +123,13 @@ router.get('/history', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/games/family-cards - Fetch family members with photos for NameFace and WhoseVoice games
+// GET /api/games/family-cards - Fetch family members with photos & audio for NameFace and FamilyVoice games
 router.get('/family-cards', requireAuth, async (req, res) => {
   try {
     const elderId = await getElderId(req);
-    if (!elderId) return res.status(404).json({ error: 'NO_ELDER_FOUND' });
+    if (!elderId) return res.status(404).json({ error: 'NO_ELDER_FOUND', members: [] });
 
-    const members = await query(
+    const membersRes = await query(
       `SELECT id, name, relationship, phone,
               (photo IS NOT NULL) as has_photo,
               (voice_audio IS NOT NULL) as has_voice
@@ -139,9 +139,40 @@ router.get('/family-cards', requireAuth, async (req, res) => {
       [elderId]
     );
 
-    return res.json({ success: true, members: members.rows });
+    let members = membersRes.rows.map((m) => ({
+      ...m,
+      hasPhoto: Boolean(m.has_photo),
+      photoUrl: m.has_photo ? `/api/family/members/${m.id}/photo` : null,
+      hasVoice: Boolean(m.has_voice),
+      voiceUrl: m.has_voice ? `/api/family/members/${m.id}/voice` : null,
+    }));
+
+    // If no family members in family_members table, check family_photographs
+    if (members.length === 0) {
+      const photosRes = await query(
+        `SELECT id, member_name as name, relationship, photo_data
+         FROM family_photographs WHERE elder_id = $1 ORDER BY created_at ASC`,
+        [elderId]
+      );
+      if (photosRes.rows.length > 0) {
+        members = photosRes.rows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          relationship: p.relationship,
+          phone: '',
+          has_photo: true,
+          hasPhoto: true,
+          photoUrl: `/api/family/photos/${p.id}/file`,
+          has_voice: false,
+          hasVoice: false,
+          voiceUrl: null,
+        }));
+      }
+    }
+
+    return res.json({ success: true, members });
   } catch (err) {
-    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+    return res.status(500).json({ error: 'SERVER_ERROR', message: err.message, members: [] });
   }
 });
 
